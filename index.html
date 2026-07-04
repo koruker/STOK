@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Stok Takip v3.12</title>
+<title>Stok Takip v3.13</title>
 <meta name="theme-color" content="#0a0c10">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -605,9 +605,25 @@ async function api(action, payload={}){
         const curBal=Number(await dbGet(balPath))||0;
         const updates={};
         if(type==='cekim'){
+          const authorized=String(product.authorizedUsers||'').split(',').map(s=>s.trim()).filter(Boolean);
+          const hasAuth=authorized.length===0||authorized.includes(S.user.email)||S.user.role==='admin';
+          if(!hasAuth) throw new Error('Bu ürünü çekmek için yetkiniz yok. Önce yetki talebi gönderin.');
           if(Number(product.stock)<qty) throw new Error('Yetersiz stok.');
           updates['products/'+productId+'/stock']=Number(product.stock)-qty;
           updates[balPath]=curBal+qty;
+          // Aynı ürün+makinede zaten bakiyesi varsa: eskisi otomatik hurda bildirimi olarak admin onayına düşer
+          if(curBal>0){
+            const scrapId=newId('scrap');
+            updates['pendingScrap/'+scrapId]={
+              timestamp:new Date().toISOString(),
+              triggerEmail:S.user.email,
+              machineId,
+              productId,
+              oldUserEmail:S.user.email,
+              oldQuantity:curBal,
+              status:'pending'
+            };
+          }
         } else if(type==='iade'){
           if(curBal<qty) throw new Error('Üzerinizde bu kadar stok yok.');
           updates['products/'+productId+'/stock']=Number(product.stock)+qty;

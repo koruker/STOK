@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Stok Takip v3.13</title>
+<title>Stok Takip v3.14</title>
 <meta name="theme-color" content="#0a0c10">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -539,7 +539,7 @@ async function api(action, payload={}){
         ]);
         const products=objToList(productsObj).map(p=>({...p, materials:arrToStr(p.materials), authorizedUsers:arrToStr(p.authorizedUsers), partNumbers:arrToStr(p.partNumbers), stock:Number(p.stock)||0}));
         const categories=objToList(categoriesObj);
-        const machines=objToList(machinesObj);
+        const machines=objToList(machinesObj).sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
         const fields=objToList(fieldsObj);
         const groups=objToList(groupsObj).map(g=>({...g, permissions:toArr(g.permissions)}));
         const labels=settingsObj&&settingsObj.labels?(()=>{try{return JSON.parse(settingsObj.labels);}catch(e){return {};}})():{};
@@ -579,6 +579,7 @@ async function api(action, payload={}){
           const orderObj=await dbGet('orderRequests');
           const mine=objToList(orderObj).filter(o=>o.userEmail===S.user.email).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
           data.myOrders=mine;
+          data.orders=mine; // Talepler sekmesinde normal kullanıcı sadece kendi taleplerini görür
         }
         return data;
       }
@@ -782,7 +783,19 @@ async function api(action, payload={}){
       case 'adminSaveMachine': {
         const id=payload.id||newId('mac');
         const existing=payload.id?(await dbGet('machines/'+id)||{}):{};
-        await dbSet('machines/'+id,{name:payload.name, active: existing.active!==undefined?existing.active:true});
+        let order=existing.order;
+        if(order===undefined){
+          const allMac=objToList(await dbGet('machines'));
+          order=allMac.length?Math.max(...allMac.map(m=>Number(m.order)||0))+1:0;
+        }
+        await dbSet('machines/'+id,{name:payload.name, active: existing.active!==undefined?existing.active:true, order});
+        return {ok:true};
+      }
+
+      case 'adminReorderMachines': {
+        const updates={};
+        (payload.order||[]).forEach((id,idx)=>{ updates['machines/'+id+'/order']=idx; });
+        await dbUpdate('/',updates);
         return {ok:true};
       }
 
@@ -956,6 +969,9 @@ function enterApp(){
     const perm=t.dataset.perm;
     t.classList.toggle('hidden', !hasPerm(perm));
   });
+  // uyarılar sekmesi: sadece admin veya ürün ekleme yetkisi olanlar görebilir
+  const alertsTabEl=$('#tabAlerts');
+  if(alertsTabEl) alertsTabEl.classList.toggle('hidden', !(S.user.role==='admin'||hasPerm('add_product')));
   // sekme isimlerini labels ile güncelle
   applyLabels();
   renderMachineStrip();
@@ -1887,14 +1903,28 @@ function renderMachineBalances(){
 function renderMachineList(){
   const wrap=$('#machineList');wrap.innerHTML='';
   if(!S.machines.length){wrap.appendChild(el('div','empty','<p>Makine yok.</p>'));return;}
-  S.machines.forEach(m=>{
+  S.machines.forEach((m,idx)=>{
     const row=el('div','adm-row');
     row.innerHTML=`<div class="adm-main"><div class="adm-title">${esc(m.name)}</div></div>
-      <div class="adm-acts"><button class="btn-sm" data-act="edit">Düzenle</button><button class="btn-sm bad" data-act="del">Sil</button></div>`;
+      <div class="adm-acts">
+        <button class="btn-sm" data-act="up" ${idx===0?'disabled':''}>↑</button>
+        <button class="btn-sm" data-act="down" ${idx===S.machines.length-1?'disabled':''}>↓</button>
+        <button class="btn-sm" data-act="edit">Düzenle</button><button class="btn-sm bad" data-act="del">Sil</button></div>`;
     row.querySelector('[data-act="edit"]').onclick=()=>openMachineSheet(m);
     row.querySelector('[data-act="del"]').onclick=async()=>{
       if(!confirm('Silmek istediğinizden emin misiniz?'))return;
       showLoading();try{await api('adminDeleteMachine',{id:m.id});await loadAppData();hideLoading();renderMachineList();showToast('Silindi.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+    };
+    const upBtn=row.querySelector('[data-act="up"]'), downBtn=row.querySelector('[data-act="down"]');
+    if(upBtn) upBtn.onclick=async()=>{
+      const newOrder=S.machines.map(x=>x.id); const i=newOrder.indexOf(m.id);
+      if(i>0){ [newOrder[i-1],newOrder[i]]=[newOrder[i],newOrder[i-1]];
+        showLoading();try{await api('adminReorderMachines',{order:newOrder});await loadAppData();hideLoading();renderMachineList();}catch(e){hideLoading();showToast(e.message,'bad');} }
+    };
+    if(downBtn) downBtn.onclick=async()=>{
+      const newOrder=S.machines.map(x=>x.id); const i=newOrder.indexOf(m.id);
+      if(i<newOrder.length-1){ [newOrder[i],newOrder[i+1]]=[newOrder[i+1],newOrder[i]];
+        showLoading();try{await api('adminReorderMachines',{order:newOrder});await loadAppData();hideLoading();renderMachineList();}catch(e){hideLoading();showToast(e.message,'bad');} }
     };
     wrap.appendChild(row);
   });

@@ -9,6 +9,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 :root{
   --bg-0:#0a0c10;--bg-1:#12151b;--bg-2:#1a1f28;--bg-3:#212733;
@@ -415,8 +417,19 @@ textarea.fi{resize:vertical;min-height:70px;}
 <div id="toastRoot"></div>
 <script>
 /* ===== CONFIG ===== */
-const API_URL = 'https://script.google.com/macros/s/AKfycbyzIy2XNCNMIpqTuxr6cI5zAPgeETf4mMFryMZWXRorOhP6hKpDRyT2KQ04q1H109RlCw/exec';
 const GOOGLE_CLIENT_ID = '48721393532-h3phnsf14rj4mpdfsg11l26h4mt64qdr.apps.googleusercontent.com';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBVYw9vRUQ-gH679DMr84Ta2FNPPFp0MVE",
+  authDomain: "koruker-stok.firebaseapp.com",
+  databaseURL: "https://koruker-stok-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "koruker-stok",
+  storageBucket: "koruker-stok.firebasestorage.app",
+  messagingSenderId: "1016382885846",
+  appId: "1:1016382885846:web:1956739668f96e59ad9e77"
+};
+firebase.initializeApp(firebaseConfig);
+const rtdb = firebase.database();
 
 const ALL_PERMS = [
   {id:'order_request',    label:'Sipariş Talebi Oluşturma'},
@@ -472,17 +485,313 @@ const ICONS = {
 const ICONS_LOCK = ICONS.lock;
 function icon(name,cls){ return cls?`<span class="${cls}">${ICONS[name]}</span>`:ICONS[name]; }
 
-/* ===== API ===== */
+/* ===== FIREBASE HELPERS ===== */
+function encodeEmailKey(email){ return String(email||'').trim().toLowerCase().replace(/\./g,'_'); }
+function decodeEmailKey(key){ return String(key||'').replace(/_/g,'.'); }
+function newId(prefix){ return prefix+'_'+Math.random().toString(16).slice(2,10); }
+function toArr(v){ if(Array.isArray(v))return v; if(!v)return []; try{const p=JSON.parse(v);return Array.isArray(p)?p:[];}catch(e){return String(v).split(',').map(s=>s.trim()).filter(Boolean);} }
+function arrToStr(v){ return Array.isArray(v)?v.join(','):(v||''); }
+async function dbGet(path){ const snap=await rtdb.ref(path).once('value'); return snap.val(); }
+async function dbSet(path,val){ await rtdb.ref(path).set(val); }
+async function dbUpdate(path,val){ await rtdb.ref(path).update(val); }
+async function dbRemove(path){ await rtdb.ref(path).remove(); }
+function objToList(obj,extra){ return obj?Object.entries(obj).map(([id,v])=>({id,...(v||{}), ...(extra||{})})):[]; }
+
+function computePerms(user, groups){
+  if(!user) return [];
+  if(user.role==='admin') return ['*'];
+  const grp=(groups||[]).find(g=>g.id===user.groupId);
+  return grp?toArr(grp.permissions):[];
+}
+
+/* ===== API (Firebase RTDB tabanlı) ===== */
 async function api(action, payload={}){
-  const body={action, email:S.user?S.user.email:(payload.email||''), ...payload};
-  const qs=Object.entries(body).filter(([,v])=>v!=null).map(([k,v])=>encodeURIComponent(k)+'='+encodeURIComponent(typeof v==='object'?JSON.stringify(v):v)).join('&');
-  let res,data;
-  try{ res=await fetch(API_URL+'?'+qs,{method:'GET',redirect:'follow'}); }
-  catch(e){ throw new Error('Bağlantı hatası.'); }
-  try{ data=await res.json(); }
-  catch(e){ throw new Error('Sunucu yanıtı okunamadı.'); }
-  if(data.error) throw new Error(data.message||data.error);
-  return data;
+  try{
+    switch(action){
+
+      case 'login': {
+        const key=encodeEmailKey(payload.email);
+        const u=await dbGet('users/'+key);
+        if(!u) throw new Error('Bu email ile kayıtlı değil. Yöneticinizle iletişime geçin.');
+        if(u.status!=='approved' && u.role!=='admin') throw new Error('Hesabınız onay bekliyor.');
+        const groups=objToList(await dbGet('groups'));
+        const user={email:payload.email, ...u};
+        return {user, perms: user.role==='admin'?[]:computePerms(user,groups)};
+      }
+
+      case 'quickLogin': {
+        const usersObj=await dbGet('users')||{};
+        let foundKey=null,foundUser=null;
+        Object.entries(usersObj).forEach(([k,v])=>{
+          if(v && v.quickId===payload.quickId && v.quickPin===payload.quickPin){ foundKey=k; foundUser=v; }
+        });
+        if(!foundUser) throw new Error('ID veya PIN hatalı.');
+        if(foundUser.status!=='approved' && foundUser.role!=='admin') throw new Error('Hesabınız onay bekliyor.');
+        const groups=objToList(await dbGet('groups'));
+        const user={email:decodeEmailKey(foundKey), ...foundUser};
+        return {user, perms: user.role==='admin'?[]:computePerms(user,groups)};
+      }
+
+      case 'getAppData': {
+        const [productsObj,categoriesObj,machinesObj,fieldsObj,groupsObj,settingsObj,balancesObj] = await Promise.all([
+          dbGet('products'), dbGet('categories'), dbGet('machines'), dbGet('customFields'),
+          dbGet('groups'), dbGet('settings'), dbGet('balances')
+        ]);
+        const products=objToList(productsObj).map(p=>({...p, materials:arrToStr(p.materials), authorizedUsers:arrToStr(p.authorizedUsers), partNumbers:arrToStr(p.partNumbers), stock:Number(p.stock)||0}));
+        const categories=objToList(categoriesObj);
+        const machines=objToList(machinesObj);
+        const fields=objToList(fieldsObj);
+        const groups=objToList(groupsObj).map(g=>({...g, permissions:toArr(g.permissions)}));
+        const labels=settingsObj&&settingsObj.labels?(()=>{try{return JSON.parse(settingsObj.labels);}catch(e){return {};}})():{};
+        const fieldTemplate=settingsObj&&settingsObj.fieldTemplate||'';
+
+        // myBalances / allBalances flatten
+        const myKey=encodeEmailKey(S.user.email);
+        const myBalances=[];
+        const allBalancesList=[];
+        Object.entries(balancesObj||{}).forEach(([uKey,byProd])=>{
+          Object.entries(byProd||{}).forEach(([productId,byMac])=>{
+            Object.entries(byMac||{}).forEach(([machineId,quantity])=>{
+              const row={userEmail:decodeEmailKey(uKey),productId,machineId:(machineId==='_none_'||machineId==='null')?'':machineId,quantity:Number(quantity)||0};
+              allBalancesList.push(row);
+              if(uKey===myKey) myBalances.push(row);
+            });
+          });
+        });
+
+        const alerts=products.filter(p=>Number(p.alertThreshold)>0 && Number(p.stock)<=Number(p.alertThreshold));
+
+        const data={products,categories,machines,fields,groups,myBalances,fieldTemplate,labels,alerts,topProductIds:[]};
+
+        if(S.user.role==='admin'){
+          const [usersObj,transObj,pendReqObj,pendScrapObj,orderObj]=await Promise.all([
+            dbGet('users'), dbGet('transactions'), dbGet('pendingRequests'), dbGet('pendingScrap'), dbGet('orderRequests')
+          ]);
+          data.allUsers=objToList(usersObj).map(u=>({...u, email:decodeEmailKey(u.id)}));
+          data.allBalances=allBalancesList;
+          const allTx=objToList(transObj).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+          data.transactions=allTx;
+          data.scrapLog=allTx.filter(t=>t.type==='hurda');
+          data.pendingRequests=objToList(pendReqObj).filter(r=>r.status==='pending');
+          data.pendingScrap=objToList(pendScrapObj).filter(s=>s.status==='pending');
+          data.orders=objToList(orderObj).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+        } else {
+          const orderObj=await dbGet('orderRequests');
+          const mine=objToList(orderObj).filter(o=>o.userEmail===S.user.email).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+          data.myOrders=mine;
+        }
+        return data;
+      }
+
+      case 'createOrder': {
+        const id=newId('ord');
+        await dbSet('orderRequests/'+id,{timestamp:new Date().toISOString(),userEmail:S.user.email,productId:payload.productId,quantity:Number(payload.quantity)||1,note:payload.note||'',status:'pending'});
+        return {ok:true};
+      }
+
+      case 'requestAccess': {
+        const id=newId('req');
+        await dbSet('pendingRequests/'+id,{timestamp:new Date().toISOString(),userEmail:S.user.email,productId:payload.productId,quantity:Number(payload.quantity)||1,machineId:payload.machineId||'_none_',status:'pending'});
+        return {ok:true};
+      }
+
+      case 'stockAction': {
+        const productId=payload.productId, type=payload.type, qty=Number(payload.quantity)||0, machineId=payload.machineId||'_none_';
+        if(qty<=0) throw new Error('Geçersiz adet.');
+        const userKey=encodeEmailKey(S.user.email);
+        const product=await dbGet('products/'+productId);
+        if(!product) throw new Error('Ürün bulunamadı.');
+        const balPath='balances/'+userKey+'/'+productId+'/'+machineId;
+        const curBal=Number(await dbGet(balPath))||0;
+        const updates={};
+        if(type==='cekim'){
+          if(Number(product.stock)<qty) throw new Error('Yetersiz stok.');
+          updates['products/'+productId+'/stock']=Number(product.stock)-qty;
+          updates[balPath]=curBal+qty;
+        } else if(type==='iade'){
+          if(curBal<qty) throw new Error('Üzerinizde bu kadar stok yok.');
+          updates['products/'+productId+'/stock']=Number(product.stock)+qty;
+          updates[balPath]=curBal-qty;
+        } else if(type==='hurda'){
+          if(curBal<qty) throw new Error('Üzerinizde bu kadar stok yok.');
+          updates[balPath]=curBal-qty;
+        } else {
+          throw new Error('Bilinmeyen işlem tipi.');
+        }
+        const txId=newId('tx');
+        updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:S.user.email,productId,type,quantity:qty,machineId};
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminHandlePendingScrap': {
+        const s=await dbGet('pendingScrap/'+payload.scrapId);
+        if(!s) throw new Error('Kayıt bulunamadı.');
+        const updates={};
+        updates['pendingScrap/'+payload.scrapId+'/status']=payload.approved?'approved':'rejected';
+        if(payload.approved){
+          const uKey=encodeEmailKey(s.oldUserEmail);
+          const balPath='balances/'+uKey+'/'+s.productId+'/'+(s.machineId||'_none_');
+          const curBal=Number(await dbGet(balPath))||0;
+          updates[balPath]=Math.max(0,curBal-Number(s.oldQuantity||0));
+          const txId=newId('tx');
+          updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:s.oldUserEmail,productId:s.productId,type:'hurda',quantity:Number(s.oldQuantity||0),machineId:s.machineId||'_none_'};
+        }
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminHandleRequest': {
+        const r=await dbGet('pendingRequests/'+payload.requestId);
+        if(!r) throw new Error('Kayıt bulunamadı.');
+        const updates={};
+        updates['pendingRequests/'+payload.requestId+'/status']=payload.approved?'approved':'rejected';
+        if(payload.approved){
+          const product=await dbGet('products/'+r.productId);
+          if(!product) throw new Error('Ürün bulunamadı.');
+          const qty=Number(r.quantity)||0;
+          if(Number(product.stock)<qty) throw new Error('Yetersiz stok.');
+          const uKey=encodeEmailKey(r.userEmail);
+          const balPath='balances/'+uKey+'/'+r.productId+'/'+(r.machineId||'_none_');
+          const curBal=Number(await dbGet(balPath))||0;
+          updates['products/'+r.productId+'/stock']=Number(product.stock)-qty;
+          updates[balPath]=curBal+qty;
+          const txId=newId('tx');
+          updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:r.userEmail,productId:r.productId,type:'cekim',quantity:qty,machineId:r.machineId||'_none_'};
+        }
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminHandleOrder': {
+        const updates={};
+        updates['orderRequests/'+payload.orderId+'/status']=payload.approved?'fulfilled':'rejected';
+        updates['orderRequests/'+payload.orderId+'/adminNote']=payload.note||'';
+        updates['orderRequests/'+payload.orderId+'/resolvedAt']=new Date().toISOString();
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminSaveUser': {
+        if(!payload.targetEmail) throw new Error('Email zorunlu.');
+        const key=encodeEmailKey(payload.targetEmail);
+        const existing=await dbGet('users/'+key)||{};
+        const merged={...existing};
+        ['displayName','quickId','quickPin','groupId','role','status'].forEach(f=>{
+          if(payload[f]!==undefined && payload[f]!=='') merged[f]=payload[f];
+        });
+        if(!existing || Object.keys(existing).length===0){
+          merged.status=merged.status||'pending';
+          merged.role=merged.role||'operator';
+          merged.createdAt=new Date().toISOString();
+        }
+        await dbSet('users/'+key,merged);
+        return {ok:true};
+      }
+
+      case 'adminDeleteUser': {
+        await dbRemove('users/'+encodeEmailKey(payload.targetEmail));
+        return {ok:true};
+      }
+
+      case 'adminAdjustBalance': {
+        const uKey=encodeEmailKey(payload.targetEmail);
+        await dbSet('balances/'+uKey+'/'+payload.productId+'/'+(payload.machineId||'_none_'),Number(payload.newQuantity)||0);
+        return {ok:true};
+      }
+
+      case 'adminScrapFromBalance': {
+        const uKey=encodeEmailKey(payload.targetEmail);
+        const balPath='balances/'+uKey+'/'+payload.productId+'/'+(payload.machineId||'_none_');
+        const curBal=Number(await dbGet(balPath))||0;
+        const qty=Number(payload.quantity)||0;
+        if(curBal<qty) throw new Error('Bakiye yetersiz.');
+        const updates={};
+        updates[balPath]=curBal-qty;
+        const txId=newId('tx');
+        updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:payload.targetEmail,productId:payload.productId,type:'hurda',quantity:qty,machineId:payload.machineId||'_none_'};
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminDeleteGroup': {
+        await dbRemove('groups/'+payload.id);
+        return {ok:true};
+      }
+
+      case 'adminSaveGroup': {
+        const id=payload.id||newId('grp');
+        await dbSet('groups/'+id,{name:payload.name, permissions:payload.permissions||[]});
+        return {ok:true};
+      }
+
+      case 'adminDeleteProduct': {
+        await dbRemove('products/'+payload.id);
+        return {ok:true};
+      }
+
+      case 'adminSaveProduct': {
+        const id=payload.id||newId('prod');
+        let customData={}; try{customData=JSON.parse(payload.customData||'{}');}catch(e){}
+        const existing=payload.id?(await dbGet('products/'+id)||{}):{};
+        const prod={
+          name:payload.name, brand:payload.brand||'', categoryId:payload.categoryId||'',
+          stock:Number(payload.stock)||0, unit:payload.unit||'',
+          partNumbers:payload.partNumbers||'', materials:payload.materials||'',
+          authorizedUsers:payload.authorizedUsers||'', customData,
+          alertThreshold:Number(payload.alertThreshold)||0,
+          createdAt: existing.createdAt || new Date().toISOString()
+        };
+        await dbSet('products/'+id,prod);
+        return {ok:true};
+      }
+
+      case 'adminDeleteCategory': {
+        await dbRemove('categories/'+payload.id);
+        return {ok:true};
+      }
+
+      case 'adminSaveCategory': {
+        const id=payload.id||newId('cat');
+        const obj={name:payload.name}; if(payload.parentId) obj.parentId=payload.parentId;
+        await dbSet('categories/'+id,obj);
+        return {ok:true};
+      }
+
+      case 'adminDeleteMachine': {
+        await dbRemove('machines/'+payload.id);
+        return {ok:true};
+      }
+
+      case 'adminSaveMachine': {
+        const id=payload.id||newId('mac');
+        const existing=payload.id?(await dbGet('machines/'+id)||{}):{};
+        await dbSet('machines/'+id,{name:payload.name, active: existing.active!==undefined?existing.active:true});
+        return {ok:true};
+      }
+
+      case 'adminSaveField': {
+        const id=newId('fld');
+        await dbSet('customFields/'+id,{name:payload.name, type:payload.type, options:payload.options||''});
+        return {ok:true};
+      }
+
+      case 'adminSetFieldTemplate': {
+        await dbSet('settings/fieldTemplate',payload.template||'');
+        return {ok:true};
+      }
+
+      case 'adminSaveSetting': {
+        await dbSet('settings/'+payload.key, payload.value);
+        return {ok:true};
+      }
+
+      default:
+        throw new Error('Bilinmeyen işlem: '+action);
+    }
+  }catch(e){
+    throw new Error(e.message||'Bir hata oluştu.');
+  }
 }
 
 /* ===== GOOGLE LOGIN ===== */
@@ -1307,7 +1616,7 @@ function renderGroupList(){
   const wrap=$('#groupList');wrap.innerHTML='';
   if(!S.groups.length){wrap.appendChild(el('div','empty','<p>Grup yok. + ile ekleyin.</p>'));return;}
   S.groups.forEach(g=>{
-    let perms=[]; try{perms=JSON.parse(g.permissions||'[]');}catch(e){}
+    let perms=toArr(g.permissions);
     const row=el('div','adm-row');
     row.innerHTML=`<div class="adm-main">
       <div class="adm-title">${esc(g.name)}</div>
@@ -1327,7 +1636,7 @@ function renderGroupList(){
 
 function openGroupSheet(group=null){
   const isEdit=!!group;
-  let curPerms=[]; try{curPerms=JSON.parse(group?.permissions||'[]');}catch(e){}
+  let curPerms=toArr(group?.permissions);
   const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
   sheet.innerHTML=`<div class="sheet-handle"></div>
     <h2>${isEdit?'Grubu Düzenle':'Yeni Grup'}</h2>

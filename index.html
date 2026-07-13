@@ -8,7 +8,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -299,8 +298,7 @@ textarea.fi{resize:vertical;min-height:70px;}
       <div class="login-card">
         <div class="login-mark">D</div>
         <h1 id="loginTitle">Stok Takip</h1>
-        <p>Devam etmek için Google hesabınızla giriş yapın. Erişim yönetici tarafından belirlenir.</p>
-        <div id="gBtnWrap" style="display:flex;justify-content:center;"></div>
+        <p>Devam etmek için ID ve PIN'inizle giriş yapın. Erişim yönetici tarafından belirlenir.</p>
         <div style="margin-top:18px;text-align:center;">
           <button class="quick-login-btn" id="quickLoginBtn">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
@@ -421,8 +419,6 @@ textarea.fi{resize:vertical;min-height:70px;}
 <div id="toastRoot"></div>
 <script>
 /* ===== CONFIG ===== */
-const GOOGLE_CLIENT_ID = '48721393532-h3phnsf14rj4mpdfsg11l26h4mt64qdr.apps.googleusercontent.com';
-
 const firebaseConfig = {
   apiKey: "AIzaSyBVYw9vRUQ-gH679DMr84Ta2FNPPFp0MVE",
   authDomain: "koruker-stok.firebaseapp.com",
@@ -437,8 +433,9 @@ const rtdb = firebase.database();
 const fbAuth = firebase.auth();
 
 /* ===== FIREBASE AUTH GATE =====
-   RTDB Rules "auth != null" gerektiriyor. Google girişinde gerçek Google
-   credential ile, Hızlı Giriş'te ise anonim oturumla auth sağlanır. */
+   RTDB Rules "auth != null" gerektiriyor. Tüm girişler (ID+PIN) anonim
+   Firebase oturumu üzerinden bu şartı sağlar; kullanıcı kimliği/izinleri
+   ayrıca /users düğümünden okunup uygulama içinde kontrol edilir. */
 let __authInitialState=null;
 function getInitialAuthState(){
   if(!__authInitialState){
@@ -460,12 +457,6 @@ function ensureFirebaseAuth(){
     })();
   }
   return __authReadyPromise;
-}
-async function signInWithGoogleCredential(idToken){
-  const cred=firebase.auth.GoogleAuthProvider.credential(idToken);
-  const res=await fbAuth.signInWithCredential(cred);
-  __authReadyPromise=Promise.resolve(res.user);
-  return res.user;
 }
 
 const ALL_PERMS = [
@@ -863,55 +854,6 @@ async function api(action, payload={}){
     }
   }catch(e){
     throw new Error(e.message||'Bir hata oluştu.');
-  }
-}
-
-/* ===== GOOGLE LOGIN ===== */
-function initGSI(){
-  if(!window.google||!google.accounts){
-    if(window.__gsiRetries===undefined) window.__gsiRetries=0;
-    if(window.__gsiRetries<10){ window.__gsiRetries++; setTimeout(initGSI,400); }
-    else $('#loginStatus').innerHTML='<div class="alert bad">Google giriş scripti yüklenemedi. Sayfayı yenileyin.</div>';
-    return;
-  }
-  try{
-    google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:onGoogleCred,ux_mode:'popup'});
-    google.accounts.id.renderButton($('#gBtnWrap'),{theme:'filled_black',size:'large',shape:'pill',text:'continue_with',width:280});
-  }catch(err){
-    $('#loginStatus').innerHTML=`<div class="alert bad">Google giriş başlatılamadı: ${esc(err.message)}</div>`;
-  }
-}
-function decodeJwt(t){ return JSON.parse(decodeURIComponent(atob(t.split('.')[1]).split('').map(c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''))); }
-
-async function onGoogleCred(resp){
-  const pl=decodeJwt(resp.credential);
-  $('#loginStatus').textContent='Doğrulanıyor…';
-  try{
-    await signInWithGoogleCredential(resp.credential);
-    const d=await api('login',{email:pl.email});
-    S.user=d.user; S.perms=d.perms||[];
-    try{localStorage.setItem('depo_session_email',pl.email);}catch(e){}
-    showLoading('Veriler yükleniyor…');
-    await loadAppData(); hideLoading(); enterApp();
-  }catch(err){
-    if(err.message.includes('kayıtlı değil')||err.message.includes('UNAUTHORIZED')){
-      $('#loginStatus').innerHTML=`<div class="alert bad"><b>Yetkisiz Erişim</b><br>${esc(err.message)}</div>`;
-    } else { $('#loginStatus').textContent='Hata: '+err.message; }
-  }
-}
-
-async function tryAutoLogin(){
-  let savedEmail; try{ savedEmail=localStorage.getItem('depo_session_email'); }catch(e){ savedEmail=null; }
-  if(!savedEmail) return false;
-  $('#loginStatus').textContent='Oturum açılıyor…';
-  try{
-    const d=await api('login',{email:savedEmail});
-    S.user=d.user; S.perms=d.perms||[];
-    showLoading('Veriler yükleniyor…');
-    await loadAppData(); hideLoading(); enterApp(); return true;
-  }catch(err){
-    try{localStorage.removeItem('depo_session_email');}catch(e){}
-    $('#loginStatus').textContent=''; return false;
   }
 }
 
@@ -2166,11 +2108,10 @@ $('#notifBtn').onclick=()=>{
 
 /* ===== LOGOUT ===== */
 $('#logoutBtn').onclick=()=>{
-  if(window.google)google.accounts.id.disableAutoSelect();
   try{ fbAuth.signOut(); }catch(e){}
   __authReadyPromise=null; __authInitialState=Promise.resolve(null);
   S.user=null;S.perms=[];
-  try{localStorage.removeItem('depo_session_email');localStorage.removeItem('depo_quick_id');localStorage.removeItem('depo_quick_pin');}catch(e){}
+  try{localStorage.removeItem('depo_quick_id');localStorage.removeItem('depo_quick_pin');}catch(e){}
   $$('.admin-only').forEach(t=>t.classList.add('hidden'));
   $$('.perm-tab').forEach(t=>t.classList.add('hidden'));
   $('#notifBtn').classList.add('hidden');
@@ -2180,11 +2121,7 @@ $('#logoutBtn').onclick=()=>{
 /* ===== INIT ===== */
 window.addEventListener('load',async()=>{
   if(screen.orientation?.lock)screen.orientation.lock('portrait').catch(()=>{});
-  const loggedIn=await tryAutoLogin();
-  if(!loggedIn){
-    const quickLoggedIn=await tryQuickAutoLogin();
-    if(!quickLoggedIn) initGSI();
-  }
+  await tryQuickAutoLogin();
 });
 </script>
 </body>

@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Stok Takip v3.14</title>
+<title>Stok Takip v3.1</title>
 <meta name="theme-color" content="#0a0c10">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 :root{
@@ -403,7 +404,10 @@ textarea.fi{resize:vertical;min-height:70px;}
       <div id="scrapList"></div>
     </div>
     <div class="view hidden" id="view-a-log">
-      <div class="sec-title">Son Hareketler</div>
+      <div class="sec-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span>Son Hareketler</span>
+        <button class="btn-sm" id="txFilterBtn" style="position:relative;">Filtrele<span id="txFilterBadge" class="tab-badge hidden" style="position:static;margin-left:6px;"></span></button>
+      </div>
       <div id="txLog" style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:5px 14px;"></div>
     </div>
     <div class="view hidden" id="view-a-settings">
@@ -430,6 +434,39 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const rtdb = firebase.database();
+const fbAuth = firebase.auth();
+
+/* ===== FIREBASE AUTH GATE =====
+   RTDB Rules "auth != null" gerektiriyor. Google girişinde gerçek Google
+   credential ile, Hızlı Giriş'te ise anonim oturumla auth sağlanır. */
+let __authInitialState=null;
+function getInitialAuthState(){
+  if(!__authInitialState){
+    __authInitialState=new Promise((resolve)=>{
+      const unsub=fbAuth.onAuthStateChanged(u=>{ unsub(); resolve(u); });
+    });
+  }
+  return __authInitialState;
+}
+let __authReadyPromise=null;
+function ensureFirebaseAuth(){
+  if(fbAuth.currentUser) return Promise.resolve(fbAuth.currentUser);
+  if(!__authReadyPromise){
+    __authReadyPromise=(async()=>{
+      const initial=await getInitialAuthState();
+      if(initial) return initial;
+      const res=await fbAuth.signInAnonymously();
+      return res.user;
+    })();
+  }
+  return __authReadyPromise;
+}
+async function signInWithGoogleCredential(idToken){
+  const cred=firebase.auth.GoogleAuthProvider.credential(idToken);
+  const res=await fbAuth.signInWithCredential(cred);
+  __authReadyPromise=Promise.resolve(res.user);
+  return res.user;
+}
 
 const ALL_PERMS = [
   {id:'order_request',    label:'Sipariş Talebi Oluşturma'},
@@ -453,7 +490,8 @@ let S = {
   groups:[], myBalances:[], allBalances:[], transactions:[], allUsers:[],
   pendingRequests:[], pendingScrap:[], myRequests:[], orders:[], myOrders:[],
   topProductIds:[], scrapLog:[], alerts:[], fieldTemplate:'',
-  labels:{}, activeCategory:null, searchTerm:'', activeTab:'stock'
+  labels:{}, activeCategory:null, searchTerm:'', activeTab:'stock',
+  txFilter:{dateFrom:null, dateTo:null, productIds:[], userEmails:[], machineIds:[]}
 };
 
 /* ===== UTIL ===== */
@@ -507,6 +545,7 @@ function computePerms(user, groups){
 /* ===== API (Firebase RTDB tabanlı) ===== */
 async function api(action, payload={}){
   try{
+    await ensureFirebaseAuth();
     switch(action){
 
       case 'login': {
@@ -844,6 +883,7 @@ async function onGoogleCred(resp){
   const pl=decodeJwt(resp.credential);
   $('#loginStatus').textContent='Doğrulanıyor…';
   try{
+    await signInWithGoogleCredential(resp.credential);
     const d=await api('login',{email:pl.email});
     S.user=d.user; S.perms=d.perms||[];
     try{localStorage.setItem('depo_session_email',pl.email);}catch(e){}
@@ -1972,10 +2012,34 @@ function renderScrapList(){
 }
 
 /* ===== ADMIN: HAREKETLER ===== */
+function txFilterActiveCount(){
+  const f=S.txFilter;
+  let n=0;
+  if(f.dateFrom||f.dateTo) n++;
+  if(f.productIds.length) n++;
+  if(f.userEmails.length) n++;
+  if(f.machineIds.length) n++;
+  return n;
+}
+function applyTxFilter(list){
+  const f=S.txFilter;
+  return list.filter(tx=>{
+    if(f.dateFrom && new Date(tx.timestamp) < new Date(f.dateFrom+'T00:00:00')) return false;
+    if(f.dateTo && new Date(tx.timestamp) > new Date(f.dateTo+'T23:59:59')) return false;
+    if(f.productIds.length && !f.productIds.includes(tx.productId)) return false;
+    if(f.userEmails.length && !f.userEmails.includes(tx.userEmail)) return false;
+    if(f.machineIds.length && !f.machineIds.includes(tx.machineId)) return false;
+    return true;
+  });
+}
 function renderTxLog(){
   const wrap=$('#txLog');wrap.innerHTML='';
-  if(!S.transactions.length){wrap.appendChild(el('div','empty','<p>Hareket yok.</p>'));return;}
-  S.transactions.forEach(tx=>{
+  const badge=$('#txFilterBadge');
+  const count=txFilterActiveCount();
+  if(badge){ badge.classList.toggle('hidden', count===0); badge.textContent=String(count); }
+  const list=applyTxFilter(S.transactions||[]);
+  if(!list.length){wrap.appendChild(el('div','empty',`<p>${count>0?'Filtreye uyan hareket yok.':'Hareket yok.'}</p>`));return;}
+  list.forEach(tx=>{
     const prod=S.products.find(p=>p.id===tx.productId);
     const mac=S.machines.find(m=>m.id===tx.machineId);
     const row=el('div','tx-row');
@@ -1987,6 +2051,80 @@ function renderTxLog(){
     wrap.appendChild(row);
   });
 }
+function openTxFilterSheet(){
+  const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
+  const f=S.txFilter;
+  const uniqueUsers=[...new Set((S.transactions||[]).map(t=>t.userEmail))].sort();
+  const todayStr=()=>new Date().toISOString().slice(0,10);
+  const monthAgoStr=()=>{const d=new Date();d.setDate(1);return d.toISOString().slice(0,10);};
+  const yearAgoStr=()=>{const d=new Date();d.setMonth(0,1);return d.toISOString().slice(0,10);};
+
+  sheet.innerHTML=`<div class="sheet-handle"></div><h2>Hareketleri Filtrele</h2>
+    <div class="fg"><label class="fl">Tarih Aralığı</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="btn-sm" data-preset="today">Bugün</button>
+        <button class="btn-sm" data-preset="month">Bu Ay</button>
+        <button class="btn-sm" data-preset="year">Bu Yıl</button>
+        <button class="btn-sm" data-preset="all">Tümü</button>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input class="fi" type="date" id="fltFrom" value="${f.dateFrom||''}" style="flex:1;">
+        <input class="fi" type="date" id="fltTo" value="${f.dateTo||''}" style="flex:1;">
+      </div>
+    </div>
+    <div class="fg"><label class="fl">Ürün</label>
+      <input class="fi" id="fltProdSearch" placeholder="Ürün ara…" style="margin-bottom:6px;">
+      <div id="fltProdList" style="max-height:150px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:6px;">
+        ${S.products.map(p=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 2px;"><input type="checkbox" value="${p.id}" class="fltProdChk" ${f.productIds.includes(p.id)?'checked':''}><span>${esc(p.name)}</span></label>`).join('')}
+      </div>
+    </div>
+    <div class="fg"><label class="fl">Kullanıcı</label>
+      <div style="max-height:120px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:6px;">
+        ${uniqueUsers.map(email=>{const u=S.allUsers.find(x=>x.email===email);return `<label style="display:flex;align-items:center;gap:8px;padding:5px 2px;"><input type="checkbox" value="${esc(email)}" class="fltUserChk" ${f.userEmails.includes(email)?'checked':''}><span>${esc(u?u.displayName||u.name||email:email)}</span></label>`;}).join('')||'<div class="empty" style="padding:8px;"><p>Kayıt yok.</p></div>'}
+      </div>
+    </div>
+    <div class="fg"><label class="fl">Makine</label>
+      <div style="max-height:120px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:6px;">
+        ${S.machines.map(m=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 2px;"><input type="checkbox" value="${m.id}" class="fltMacChk" ${f.machineIds.includes(m.id)?'checked':''}><span>${esc(m.name)}</span></label>`).join('')}
+      </div>
+    </div>
+    <button class="btn-primary" id="fltApplyBtn">Uygula</button>
+    <button class="btn-secondary" id="fltClearBtn">Filtreleri Temizle</button>
+    <button class="btn-secondary" id="fltCancelBtn">Vazgeç</button>`;
+  overlay.appendChild(sheet);$('#modalRoot').appendChild(overlay);
+
+  sheet.querySelectorAll('[data-preset]').forEach(btn=>{
+    btn.onclick=()=>{
+      const p=btn.dataset.preset;
+      if(p==='today'){ sheet.querySelector('#fltFrom').value=todayStr(); sheet.querySelector('#fltTo').value=todayStr(); }
+      else if(p==='month'){ sheet.querySelector('#fltFrom').value=monthAgoStr(); sheet.querySelector('#fltTo').value=todayStr(); }
+      else if(p==='year'){ sheet.querySelector('#fltFrom').value=yearAgoStr(); sheet.querySelector('#fltTo').value=todayStr(); }
+      else { sheet.querySelector('#fltFrom').value=''; sheet.querySelector('#fltTo').value=''; }
+    };
+  });
+  sheet.querySelector('#fltProdSearch').oninput=(e)=>{
+    const q=e.target.value.trim().toLowerCase();
+    sheet.querySelectorAll('#fltProdList label').forEach(lbl=>{
+      lbl.style.display = lbl.textContent.toLowerCase().includes(q) ? 'flex' : 'none';
+    });
+  };
+  sheet.querySelector('#fltCancelBtn').onclick=closeSheet;
+  sheet.querySelector('#fltClearBtn').onclick=()=>{
+    S.txFilter={dateFrom:null, dateTo:null, productIds:[], userEmails:[], machineIds:[]};
+    closeSheet(); renderTxLog();
+  };
+  sheet.querySelector('#fltApplyBtn').onclick=()=>{
+    S.txFilter={
+      dateFrom: sheet.querySelector('#fltFrom').value||null,
+      dateTo: sheet.querySelector('#fltTo').value||null,
+      productIds:[...sheet.querySelectorAll('.fltProdChk:checked')].map(c=>c.value),
+      userEmails:[...sheet.querySelectorAll('.fltUserChk:checked')].map(c=>c.value),
+      machineIds:[...sheet.querySelectorAll('.fltMacChk:checked')].map(c=>c.value)
+    };
+    closeSheet(); renderTxLog();
+  };
+}
+$('#txFilterBtn').onclick=openTxFilterSheet;
 
 /* ===== ADMIN: AYARLAR ===== */
 function renderSettings(){
@@ -2025,6 +2163,8 @@ $('#notifBtn').onclick=()=>{
 /* ===== LOGOUT ===== */
 $('#logoutBtn').onclick=()=>{
   if(window.google)google.accounts.id.disableAutoSelect();
+  try{ fbAuth.signOut(); }catch(e){}
+  __authReadyPromise=null; __authInitialState=Promise.resolve(null);
   S.user=null;S.perms=[];
   try{localStorage.removeItem('depo_session_email');localStorage.removeItem('depo_quick_id');localStorage.removeItem('depo_quick_pin');}catch(e){}
   $$('.admin-only').forEach(t=>t.classList.add('hidden'));

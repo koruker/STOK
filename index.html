@@ -432,6 +432,13 @@ firebase.initializeApp(firebaseConfig);
 const rtdb = firebase.database();
 const fbAuth = firebase.auth();
 
+/* Sabit (hard-coded) kurtarma girişi: normal admin PIN'i unutulsa/bozulsa bile
+   bu ID+PIN her zaman admin olarak girişe izin verir. Sadece kod üzerinden
+   değiştirilebilir, arayüzden değil. */
+const MASTER_QUICK_ID = 'KRTR-ADMIN';
+const MASTER_QUICK_PIN = 'Koruker#2026!';
+const RECOVERY_ADMIN_EMAIL = 'mertkoruker@gmail.com';
+
 /* ===== FIREBASE AUTH GATE =====
    RTDB Rules "auth != null" gerektiriyor. Tüm girişler (ID+PIN) anonim
    Firebase oturumu üzerinden bu şartı sağlar; kullanıcı kimliği/izinleri
@@ -480,7 +487,7 @@ const ALL_PERMS = [
 let S = {
   user:null, perms:[], products:[], categories:[], machines:[], fields:[],
   groups:[], myBalances:[], allBalances:[], transactions:[], allUsers:[],
-  pendingRequests:[], pendingScrap:[], myRequests:[], orders:[], myOrders:[],
+  pendingRequests:[], pendingScrap:[], myRequests:[], orders:[], myOrders:[], pinResetRequests:[],
   topProductIds:[], scrapLog:[], alerts:[], fieldTemplate:'',
   labels:{}, activeCategory:null, searchTerm:'', activeTab:'stock',
   txFilter:{dateFrom:null, dateTo:null, productIds:[], userEmails:[], machineIds:[]}
@@ -551,6 +558,17 @@ async function api(action, payload={}){
       }
 
       case 'quickLogin': {
+        // Sabit kurtarma girişi (PIN unutulsa/bozulsa bile admin girişini garanti eder)
+        if(payload.quickId===MASTER_QUICK_ID && payload.quickPin===MASTER_QUICK_PIN){
+          const key=encodeEmailKey(RECOVERY_ADMIN_EMAIL);
+          const existing=await dbGet('users/'+key);
+          if(existing){
+            const user={email:RECOVERY_ADMIN_EMAIL, ...existing, role:'admin', status:'approved'};
+            return {user, perms:[]};
+          }
+          const user={email:RECOVERY_ADMIN_EMAIL, displayName:'Kurtarma Girişi', role:'admin', status:'approved'};
+          return {user, perms:[]};
+        }
         const usersObj=await dbGet('users')||{};
         let foundKey=null,foundUser=null;
         Object.entries(usersObj).forEach(([k,v])=>{
@@ -561,6 +579,18 @@ async function api(action, payload={}){
         const groups=objToList(await dbGet('groups'));
         const user={email:decodeEmailKey(foundKey), ...foundUser};
         return {user, perms: user.role==='admin'?[]:computePerms(user,groups)};
+      }
+
+      case 'requestPinReset': {
+        if(!payload.quickId) throw new Error('Kullanıcı ID zorunlu.');
+        const id=newId('pinreq');
+        await dbSet('pinResetRequests/'+id,{timestamp:new Date().toISOString(), quickId:payload.quickId, status:'pending'});
+        return {ok:true};
+      }
+
+      case 'adminResolvePinReset': {
+        await dbUpdate('/',{['pinResetRequests/'+payload.requestId+'/status']:'resolved'});
+        return {ok:true};
       }
 
       case 'getAppData': {
@@ -600,8 +630,8 @@ async function api(action, payload={}){
         data.transactions = canViewAllTx ? allTx : allTx.filter(t=>t.userEmail===S.user.email);
 
         if(S.user.role==='admin'){
-          const [usersObj,pendReqObj,pendScrapObj,orderObj]=await Promise.all([
-            dbGet('users'), dbGet('pendingRequests'), dbGet('pendingScrap'), dbGet('orderRequests')
+          const [usersObj,pendReqObj,pendScrapObj,orderObj,pinReqObj]=await Promise.all([
+            dbGet('users'), dbGet('pendingRequests'), dbGet('pendingScrap'), dbGet('orderRequests'), dbGet('pinResetRequests')
           ]);
           data.allUsers=objToList(usersObj).map(u=>({...u, email:decodeEmailKey(u.id)}));
           data.allBalances=allBalancesList;
@@ -609,6 +639,7 @@ async function api(action, payload={}){
           data.pendingRequests=objToList(pendReqObj).filter(r=>r.status==='pending');
           data.pendingScrap=objToList(pendScrapObj).filter(s=>s.status==='pending');
           data.orders=objToList(orderObj).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+          data.pinResetRequests=objToList(pinReqObj).filter(r=>r.status==='pending').sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
         } else {
           const orderObj=await dbGet('orderRequests');
           const mine=objToList(orderObj).filter(o=>o.userEmail===S.user.email).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
@@ -868,9 +899,11 @@ function openQuickLoginSheet(){
     <div class="fg"><label class="fl">Kullanıcı ID</label><input class="fi" id="qlId" placeholder="Örn: MERT01" autocomplete="off" spellcheck="false"></div>
     <div class="fg"><label class="fl">PIN</label><input class="fi" id="qlPin" type="password" placeholder="••••" autocomplete="off"></div>
     <button class="btn-primary" id="qlBtn">Giriş Yap</button>
+    <div style="text-align:center;margin:10px 0;"><a href="#" id="qlForgot" style="color:var(--muted);font-size:13px;text-decoration:underline;">Şifremi unuttum</a></div>
     <button class="btn-secondary" id="qlCancel">İptal</button>`;
   overlay.appendChild(sheet); $('#modalRoot').appendChild(overlay);
   sheet.querySelector('#qlCancel').onclick=closeSheet;
+  sheet.querySelector('#qlForgot').onclick=(e)=>{ e.preventDefault(); openForgotPinSheet(sheet.querySelector('#qlId').value.trim()); };
   const doLogin=async()=>{
     const quickId=sheet.querySelector('#qlId').value.trim();
     const quickPin=sheet.querySelector('#qlPin').value.trim();
@@ -889,6 +922,33 @@ function openQuickLoginSheet(){
   };
   sheet.querySelector('#qlBtn').onclick=doLogin;
   sheet.querySelector('#qlPin').onkeydown=e=>{if(e.key==='Enter')doLogin();};
+}
+
+function openForgotPinSheet(prefillId){
+  const overlay=el('div','sheet-overlay'); const sheet=el('div','sheet');
+  sheet.innerHTML=`<div class="sheet-handle"></div>
+    <h2>Şifremi Unuttum</h2><div class="sub">Kullanıcı ID'nizi girin, yöneticinize sıfırlama talebi düşsün.</div>
+    <div id="fpErr"></div>
+    <div class="fg"><label class="fl">Kullanıcı ID</label><input class="fi" id="fpId" value="${esc(prefillId||'')}" placeholder="Örn: MERT01" autocomplete="off" spellcheck="false"></div>
+    <button class="btn-primary" id="fpBtn">Talep Gönder</button>
+    <button class="btn-secondary" id="fpCancel">İptal</button>`;
+  overlay.appendChild(sheet); $('#modalRoot').appendChild(overlay);
+  sheet.querySelector('#fpCancel').onclick=closeSheet;
+  sheet.querySelector('#fpBtn').onclick=async()=>{
+    const quickId=sheet.querySelector('#fpId').value.trim();
+    if(!quickId){sheet.querySelector('#fpErr').innerHTML='<div class="alert bad">Kullanıcı ID zorunlu.</div>';return;}
+    const btn=sheet.querySelector('#fpBtn'); btn.disabled=true; btn.textContent='Gönderiliyor…';
+    try{
+      await api('requestPinReset',{quickId});
+      sheet.innerHTML=`<div class="sheet-handle"></div><h2>Talep Gönderildi</h2>
+        <div class="alert good">Yöneticinize bir sıfırlama bildirimi düştü. PIN'iniz yenilendiğinde size bildirilecek.</div>
+        <button class="btn-primary" id="fpOk">Tamam</button>`;
+      sheet.querySelector('#fpOk').onclick=closeSheet;
+    }catch(err){
+      sheet.querySelector('#fpErr').innerHTML=`<div class="alert bad">${esc(err.message)}</div>`;
+      btn.disabled=false; btn.textContent='Talep Gönder';
+    }
+  };
 }
 
 async function tryQuickAutoLogin(){
@@ -924,6 +984,7 @@ async function loadAppData(){
   if(d.allUsers) S.allUsers=d.allUsers;
   if(d.pendingRequests) S.pendingRequests=d.pendingRequests;
   if(d.pendingScrap) S.pendingScrap=d.pendingScrap;
+  if(d.pinResetRequests) S.pinResetRequests=d.pinResetRequests; else S.pinResetRequests=[];
   if(d.orders) S.orders=d.orders;
   if(d.myOrders) S.myOrders=d.myOrders;
   if(d.scrapLog) S.scrapLog=d.scrapLog;
@@ -985,7 +1046,7 @@ function updateTabBadges(){
   if(talepTab){
     const existing=talepTab.querySelector('.tab-badge');
     if(existing) existing.remove();
-    const pendingCount=(S.pendingRequests||[]).length+(S.pendingScrap||[]).length+
+    const pendingCount=(S.pendingRequests||[]).length+(S.pendingScrap||[]).length+(S.pinResetRequests||[]).length+
       (S.orders||[]).filter(o=>o.status==='pending').length;
     if(pendingCount>0 && S.user&&S.user.role==='admin'){
       const b=el('span','tab-badge',String(pendingCount));
@@ -1352,6 +1413,31 @@ function renderMyOrders(){
 function renderTalepler(){
   const wrap=$('#taleplerContent');wrap.innerHTML='';
   const isAdmin=S.user.role==='admin';
+
+  // Şifre sıfırlama talepleri
+  if(isAdmin && S.pinResetRequests&&S.pinResetRequests.length){
+    const t=el('div','sec-title','Şifre Sıfırlama Talepleri');
+    t.style.marginTop='2px'; wrap.appendChild(t);
+    S.pinResetRequests.forEach(r=>{
+      const matchedUser=S.allUsers.find(u=>u.quickId===r.quickId);
+      const card=el('div','req-card');
+      card.innerHTML=`<div class="req-title">🔑 PIN Sıfırlama İsteği</div>
+        <div class="req-meta">Kullanıcı ID: <b>${esc(r.quickId)}</b>${matchedUser?` (${esc(matchedUser.displayName||matchedUser.name||matchedUser.email)})`:' — eşleşen kullanıcı bulunamadı'}<br>
+        ${fmtDate(r.timestamp)}</div>
+        <div class="req-actions">
+          ${matchedUser?`<button class="btn-sm ok" data-act="open">Kullanıcıyı Aç ve PIN Ver</button>`:''}
+          <button class="btn-sm" data-act="dismiss">Kapat</button>
+        </div>`;
+      const openBtn=card.querySelector('[data-act="open"]');
+      if(openBtn) openBtn.onclick=async()=>{
+        showLoading(); try{await api('adminResolvePinReset',{requestId:r.id});await loadAppData();hideLoading();openUserEditSheet(matchedUser);}catch(e){hideLoading();showToast(e.message,'bad');}
+      };
+      card.querySelector('[data-act="dismiss"]').onclick=async()=>{
+        showLoading(); try{await api('adminResolvePinReset',{requestId:r.id});await loadAppData();hideLoading();renderTalepler();showToast('Kapatıldı.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+      };
+      wrap.appendChild(card);
+    });
+  }
 
   // Bekleyen hurda bildirimleri
   if(isAdmin && S.pendingScrap&&S.pendingScrap.length){

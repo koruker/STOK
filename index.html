@@ -1,0 +1,2206 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Stok Takip v3.1</title>
+<meta name="theme-color" content="#0a0c10">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+:root{
+  --bg-0:#0a0c10;--bg-1:#12151b;--bg-2:#1a1f28;--bg-3:#212733;
+  --line:#252b35;--line-soft:#1a1f28;
+  --text-0:#eef1f5;--text-1:#8b94a3;--text-2:#4d5664;
+  --accent:#ff8a3d;--accent-dim:#ff8a3d1f;--accent-line:#ff8a3d45;
+  --good:#4ade9a;--good-dim:#4ade9a1f;--good-line:#4ade9a45;
+  --warn:#ff8a3d;--warn-dim:#ff8a3d1f;--warn-line:#ff8a3d45;
+  --bad:#ff5468;--bad-dim:#ff54681f;--bad-line:#ff546845;
+  --blue:#5b8cff;--blue-dim:#5b8cff1f;--blue-line:#5b8cff45;
+  --purple:#a78bfa;--purple-dim:#a78bfa1f;--purple-line:#a78bfa45;
+  --font:'Space Grotesk',system-ui,sans-serif;
+  --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg-0);color:var(--text-0);font-family:var(--font);-webkit-font-smoothing:antialiased;height:100%;overflow-x:hidden;}
+body{background-image:radial-gradient(circle at 12% 0%,#ff8a3d14 0%,transparent 40%),radial-gradient(circle at 90% 12%,#4ade9a0d 0%,transparent 45%),radial-gradient(circle at 50% 95%,#5b8cff0d 0%,transparent 45%);background-attachment:fixed;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background-image:repeating-linear-gradient(115deg,#ffffff03 0px,#ffffff03 1px,transparent 1px,transparent 3px);opacity:.5;}
+#app{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;}
+.hidden{display:none!important;}
+
+#rotateLock{position:fixed;inset:0;z-index:9999;background:var(--bg-0);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:32px;}
+@media(orientation:landscape)and(max-width:900px){#rotateLock{display:flex;}#app{display:none;}}
+.rotate-icon{font-size:48px;animation:tilt 1.6s ease-in-out infinite;}
+@keyframes tilt{0%,100%{transform:rotate(0deg);}50%{transform:rotate(90deg);}}
+
+/* status strip */
+.status-strip{height:2px;background:linear-gradient(90deg,var(--accent),var(--good) 70%);background-size:200% 100%;animation:stripBoot 1.1s ease-out;flex-shrink:0;}
+@keyframes stripBoot{from{background-position:100% 0;}to{background-position:0 0;}}
+
+/* topbar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;backdrop-filter:blur(16px);background:rgba(10,12,16,.85);z-index:50;}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-mark{width:34px;height:34px;border-radius:8px 8px 8px 2px;background:linear-gradient(135deg,var(--accent),#ffaf6e);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:14px;color:#1a0c02;box-shadow:0 0 0 1px #ffffff1a inset,0 8px 20px -8px #ff8a3d70;flex-shrink:0;position:relative;}
+.brand-mark::after{content:'';position:absolute;inset:-1px;border-radius:inherit;border:1px solid #ff8a3d30;}
+.brand-name{font-weight:700;font-size:15px;letter-spacing:-.02em;line-height:1.1;}
+.brand-sub{font-family:var(--mono);font-size:9.5px;color:var(--text-2);letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-top:2px;}
+.topbar-right{display:flex;align-items:center;gap:7px;}
+.role-chip{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;padding:4px 8px 4px 7px;border-radius:5px;background:var(--accent-dim);color:var(--accent);font-family:var(--mono);border:1px solid var(--accent-line);display:inline-flex;align-items:center;gap:5px;}
+.role-chip::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor;flex-shrink:0;}
+.role-chip.operator{background:var(--blue-dim);color:var(--blue);border-color:var(--blue-line);}
+.role-chip.group{background:var(--purple-dim);color:var(--purple);border-color:var(--purple-line);}
+.btn-icon{width:32px;height:32px;border-radius:7px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s;font-size:14px;}
+.btn-icon:hover{border-color:var(--text-2);color:var(--text-0);}
+.notif-dot{position:relative;}
+.notif-dot::after{content:'';position:absolute;top:5px;right:5px;width:7px;height:7px;background:var(--bad);border-radius:50%;border:2px solid var(--bg-0);}
+
+/* machine strip */
+.machine-strip-wrap{position:relative;flex-shrink:0;}
+.machine-strip-wrap::after{content:'';position:absolute;top:0;bottom:0;right:0;width:24px;background:linear-gradient(90deg,transparent,var(--bg-1));pointer-events:none;}
+.machine-strip{display:flex;gap:0;overflow-x:auto;border-bottom:1px solid var(--line);background:var(--bg-1);scrollbar-width:none;}
+.machine-strip::-webkit-scrollbar{display:none;}
+.m-chip{display:flex;align-items:center;gap:7px;padding:9px 14px;border-right:1px solid var(--line-soft);white-space:nowrap;flex-shrink:0;cursor:pointer;transition:.12s;}
+.m-chip:hover{background:var(--bg-2);}
+.m-chip .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.m-chip .dot.on{background:var(--good);box-shadow:0 0 6px var(--good);}
+.m-chip .dot.idle{background:var(--text-2);}
+.m-chip .mid{font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--text-0);}
+.m-chip .mct{font-family:var(--mono);font-size:10.5px;color:var(--text-2);}
+
+/* tabbar */
+.tabbar{display:flex;gap:2px;padding:7px 12px;overflow-x:auto;border-bottom:1px solid var(--line);position:sticky;top:63px;z-index:40;background:rgba(10,12,16,.85);backdrop-filter:blur(16px);scrollbar-width:none;}
+.tabbar::-webkit-scrollbar{display:none;}
+.tab{position:relative;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:9px 12px 11px;color:var(--text-2);cursor:pointer;white-space:nowrap;transition:.15s;font-weight:700;}
+.tab.active{color:var(--text-0);}
+.tab.active::after{content:'';position:absolute;bottom:0;left:10px;right:10px;height:2px;background:var(--accent);border-radius:2px 2px 0 0;box-shadow:0 0 8px var(--accent-line);}
+.tab:not(.active):hover{color:var(--text-1);}
+.tab-badge{display:inline-flex;align-items:center;justify-content:center;background:var(--bad);color:#fff;border-radius:99px;font-size:8px;font-weight:700;min-width:14px;height:14px;padding:0 3px;margin-left:4px;vertical-align:middle;}
+
+/* view */
+.view{padding:18px 15px 100px;max-width:780px;margin:0 auto;width:100%;}
+.sec-title{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text-2);font-family:var(--mono);margin:22px 1px 10px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.sec-title:first-child{margin-top:2px;}
+.sec-title::after{content:'';flex:1;height:1px;background:var(--line);}
+
+/* login */
+.login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;}
+.login-card{width:100%;max-width:370px;text-align:center;background:var(--bg-1);border:1px solid var(--line);border-radius:16px;padding:38px 26px;box-shadow:0 30px 60px -30px #000a;}
+.login-mark{width:60px;height:60px;border-radius:13px 13px 13px 3px;margin:0 auto 18px;background:linear-gradient(135deg,var(--accent),#ffaf6e);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:24px;font-weight:700;color:#1a0c02;box-shadow:0 0 0 1px #ffffff1a inset,0 12px 30px -10px #ff8a3d70;}
+.login-card h1{font-size:20px;font-weight:700;margin-bottom:6px;letter-spacing:-.02em;}
+.login-card p{font-size:12.5px;color:var(--text-1);line-height:1.55;margin-bottom:24px;}
+.login-status{margin-top:16px;font-size:12px;color:var(--text-2);font-family:var(--mono);min-height:16px;}
+.login-divider{display:flex;align-items:center;gap:10px;margin:18px 0;color:var(--text-2);font-size:11px;font-family:var(--mono);}
+.login-divider::before,.login-divider::after{content:'';flex:1;height:1px;background:var(--line);}
+.quick-login-btn{background:none;border:none;color:var(--text-2);font-size:12px;font-family:var(--mono);cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:7px;transition:.15s;text-decoration:none;}
+.quick-login-btn:hover{color:var(--accent);background:var(--accent-dim);}
+.alert{padding:13px 15px;border-radius:9px;font-size:12.5px;line-height:1.5;margin-top:16px;text-align:left;}
+.alert.warn{background:var(--warn-dim);border:1px solid var(--warn-line);color:var(--warn);}
+.alert.bad{background:var(--bad-dim);border:1px solid var(--bad-line);color:var(--bad);}
+.alert.good{background:var(--good-dim);border:1px solid var(--good-line);color:var(--good);}
+.alert.info{background:var(--blue-dim);border:1px solid var(--blue-line);color:var(--blue);}
+
+/* filter */
+.filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.search-box{flex:1;min-width:160px;background:var(--bg-2);border:1px solid var(--line);border-radius:9px;padding:10px 14px;color:var(--text-0);font-size:14px;font-family:var(--font);}
+.search-box:focus{outline:none;border-color:var(--accent);}
+.chip-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:3px;margin-bottom:10px;scrollbar-width:none;}
+.chip-row::-webkit-scrollbar{display:none;}
+.chip{font-family:var(--mono);font-size:11px;padding:6px 11px;border-radius:6px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-1);white-space:nowrap;cursor:pointer;transition:.15s;font-weight:600;}
+.chip.active{background:var(--accent-dim);border-color:var(--accent-line);color:var(--accent);}
+
+/* stat row */
+.stat-row{display:flex;gap:8px;margin-bottom:4px;}
+.stat-box{flex:1;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:12px 13px;min-width:0;}
+.stat-label{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-2);font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stat-val{font-family:var(--mono);font-size:21px;font-weight:700;letter-spacing:-.02em;}
+.stat-val.amber{color:var(--accent);}
+.stat-val.green{color:var(--good);}
+.stat-val.red{color:var(--bad);}
+.stat-val.purple{color:var(--purple);}
+
+/* product card */
+.prod-card{position:relative;background:var(--bg-1);border:1px solid var(--line);border-left:none;border-radius:3px 10px 10px 3px;padding:13px 14px 13px 17px;margin-bottom:8px;display:flex;align-items:center;gap:13px;cursor:pointer;transition:.15s;overflow:hidden;}
+.prod-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line);}
+.prod-card.ok::before{background:var(--good);}
+.prod-card.mid::before{background:var(--accent);}
+.prod-card.low::before{background:var(--bad);}
+.prod-card:hover{border-color:#34404f;transform:translateX(2px);}
+.prod-card.top-card{background:linear-gradient(120deg,#1f160a,var(--bg-1) 55%);}
+.gauge{flex-shrink:0;width:50px;}
+.gauge-num{font-family:var(--mono);font-size:17px;font-weight:700;line-height:1;}
+.gauge-num.ok{color:var(--good);}
+.gauge-num.mid{color:var(--accent);}
+.gauge-num.low{color:var(--bad);}
+.gauge-unit{font-family:var(--mono);font-size:8.5px;color:var(--text-2);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+.gauge-bar{margin-top:7px;height:4px;background:var(--line);border-radius:2px;overflow:hidden;}
+.gauge-bar i{display:block;height:100%;border-radius:2px;}
+.prod-info{flex:1;min-width:0;}
+.prod-name{font-size:14px;font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em;}
+.prod-meta{font-size:10.5px;color:var(--text-2);font-family:var(--mono);display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.tag{display:inline-flex;align-items:center;background:var(--bg-2);border:1px solid var(--line);padding:2px 7px;border-radius:4px;font-size:9.5px;}
+.lock-ico{color:var(--accent);display:inline-flex;}
+
+/* balance card */
+.bal-card{background:var(--bg-1);border:1px solid var(--line);border-radius:11px;padding:13px 15px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:.15s;}
+.bal-card:hover{border-color:#34404f;}
+.bal-qty{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--good);min-width:40px;text-align:right;}
+
+/* request/order card */
+.req-card{background:var(--bg-1);border:1px solid var(--accent-line);border-radius:11px;padding:13px 15px;margin-bottom:8px;}
+.req-card.order{border-color:var(--blue-line);}
+.req-card.fulfilled{border-color:var(--good-line);opacity:.7;}
+.req-card.rejected{border-color:var(--bad-line);opacity:.7;}
+.req-card.scrap-pending{border-color:var(--warn-line);}
+.req-title{font-size:13px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:7px;}
+.req-meta{font-size:11px;color:var(--text-2);font-family:var(--mono);}
+.req-status{display:inline-flex;align-items:center;font-family:var(--mono);font-size:10px;text-transform:uppercase;padding:2px 7px;border-radius:5px;font-weight:700;margin-left:6px;}
+.req-status.pending{background:var(--warn-dim);color:var(--warn);}
+.req-status.fulfilled{background:var(--good-dim);color:var(--good);}
+.req-status.rejected{background:var(--bad-dim);color:var(--bad);}
+.req-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+
+/* admin rows */
+.adm-row{background:var(--bg-1);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.adm-main{flex:1;min-width:140px;}
+.adm-title{font-size:13px;font-weight:600;}
+.adm-sub{font-size:11px;color:var(--text-2);font-family:var(--mono);margin-top:2px;}
+.adm-acts{display:flex;gap:5px;flex-wrap:wrap;}
+
+/* category tree */
+.cat-node{margin-bottom:4px;}
+.cat-row{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--bg-1);border:1px solid var(--line);border-radius:8px;cursor:pointer;}
+.cat-row:hover{border-color:#34404f;}
+.cat-children{margin-left:18px;margin-top:4px;border-left:2px solid var(--accent-dim);padding-left:10px;}
+
+/* status pills */
+.pill{font-family:var(--mono);font-size:10px;text-transform:uppercase;padding:2px 7px;border-radius:5px;font-weight:700;}
+.pill-ok{background:var(--good-dim);color:var(--good);}
+.pill-warn{background:var(--warn-dim);color:var(--warn);}
+.pill-bad{background:var(--bad-dim);color:var(--bad);}
+.pill-blue{background:var(--blue-dim);color:var(--blue);}
+.pill-purple{background:var(--purple-dim);color:var(--purple);}
+
+/* sheet modal */
+.sheet-overlay{position:fixed;inset:0;background:#000b;backdrop-filter:blur(4px);z-index:200;display:flex;align-items:flex-end;justify-content:center;}
+.sheet{width:100%;max-width:500px;background:var(--bg-1);border:1px solid var(--line);border-bottom:none;border-radius:18px 18px 0 0;padding:20px 18px 32px;animation:slideUp .22s ease;max-height:91vh;overflow-y:auto;}
+@keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
+.sheet-handle{width:34px;height:4px;background:var(--line);border-radius:99px;margin:0 auto 16px;}
+.sheet h2{font-size:17px;font-weight:700;margin-bottom:3px;letter-spacing:-.01em;}
+.sheet .sub{font-size:12px;color:var(--text-2);font-family:var(--mono);margin-bottom:18px;}
+
+/* form */
+.fg{margin-bottom:14px;}
+.fl{font-size:11px;color:var(--text-2);font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;}
+.fi,.fs{width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:9px;padding:11px 13px;color:var(--text-0);font-size:14px;font-family:var(--font);}
+.fi:focus,.fs:focus{outline:none;border-color:var(--accent);}
+.fs option{background:var(--bg-2);}
+.fi-sm{padding:8px 11px;font-size:13px;}
+textarea.fi{resize:vertical;min-height:70px;}
+.check-row{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;cursor:pointer;margin-bottom:6px;transition:.12s;}
+.check-row:hover{border-color:#34404f;}
+.check-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;}
+.check-row label{font-size:13px;cursor:pointer;flex:1;}
+.check-row .sub-label{font-size:10.5px;color:var(--text-2);font-family:var(--mono);}
+
+/* stepper */
+.stepper{display:flex;align-items:center;gap:10px;}
+.step-btn{width:40px;height:40px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-0);font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+.stepper .fi{text-align:center;font-family:var(--mono);font-weight:700;font-size:17px;}
+
+/* action grid */
+.act-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+.act-card{position:relative;border:1px solid var(--line);border-radius:10px;padding:14px 10px;text-align:center;cursor:pointer;background:var(--bg-1);transition:.15s;}
+.act-card.sel{border-color:var(--accent);background:var(--accent-dim);}
+.act-card.sel .act-ico{color:var(--accent);}
+.act-card.disabled{opacity:.35;pointer-events:none;}
+.act-ico{display:block;margin:0 auto 7px;color:var(--text-1);}
+.act-label{font-size:11.5px;font-weight:700;font-family:var(--mono);text-transform:uppercase;letter-spacing:.03em;}
+
+/* buttons */
+.btn-primary{width:100%;padding:13px;border-radius:9px;border:none;cursor:pointer;background:linear-gradient(135deg,var(--accent),#ffaf6e);color:#1a0c02;font-weight:700;font-size:14px;font-family:var(--font);box-shadow:0 8px 22px -10px #ff8a3d60;transition:.15s;letter-spacing:-.01em;}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;}
+.btn-primary.blue{background:linear-gradient(135deg,var(--blue),#7ba6ff);box-shadow:0 8px 22px -10px #5b8cff60;color:#04143a;}
+.btn-secondary{width:100%;padding:12px;border-radius:9px;border:1px solid var(--line);cursor:pointer;background:var(--bg-2);color:var(--text-1);font-weight:600;font-size:14px;font-family:var(--font);margin-top:7px;}
+.btn-sm{font-family:var(--mono);font-size:11px;padding:6px 11px;border-radius:6px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1);cursor:pointer;font-weight:700;white-space:nowrap;letter-spacing:.01em;}
+.btn-sm.ok{color:var(--good);border-color:var(--good-line);}
+.btn-sm.bad{color:var(--bad);border-color:var(--bad-line);}
+.btn-sm.warn{color:var(--warn);border-color:var(--warn-line);}
+.btn-sm.blue{color:var(--blue);border-color:var(--blue-line);}
+
+/* FAB */
+.fab{position:fixed;bottom:22px;right:18px;width:54px;height:54px;border-radius:14px 14px 14px 4px;z-index:60;background:linear-gradient(135deg,var(--accent),#ffaf6e);color:#1a0c02;border:none;cursor:pointer;font-size:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 12px 28px -10px #ff8a3d60;}
+
+/* loading */
+.loading-ov{position:fixed;inset:0;background:#0a0c10ee;z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;}
+.spinner{width:30px;height:30px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-ov span{font-family:var(--mono);font-size:12px;color:var(--text-2);}
+
+/* toast */
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:400;background:var(--bg-3);border:1px solid var(--line);border-radius:9px;padding:12px 18px;font-size:13px;box-shadow:0 12px 28px -10px #000a;max-width:88vw;text-align:center;animation:toastIn .22s ease;pointer-events:none;}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,8px);}to{opacity:1;transform:translate(-50%,0);}}
+.toast.good{border-color:var(--good-line);color:var(--good);}
+.toast.bad{border-color:var(--bad-line);color:var(--bad);}
+
+/* tx log */
+.tx-row{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:12px;}
+.tx-row:last-child{border-bottom:none;}
+.tx-type{font-family:var(--mono);font-size:9px;text-transform:uppercase;padding:2px 6px;border-radius:5px;font-weight:700;flex-shrink:0;}
+.tx-cekim{background:var(--bad-dim);color:var(--bad);}
+.tx-iade{background:var(--good-dim);color:var(--good);}
+.tx-hurda{background:var(--warn-dim);color:var(--warn);}
+.tx-admin_duzeltme{background:var(--blue-dim);color:var(--blue);}
+.tx-detail{flex:1;min-width:0;}
+.tx-main{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tx-sub{color:var(--text-2);font-family:var(--mono);font-size:10.5px;}
+
+/* empty */
+.empty{text-align:center;padding:44px 16px;color:var(--text-2);}
+.empty .ico{display:flex;align-items:center;justify-content:center;margin-bottom:8px;opacity:.5;}
+.empty p{font-size:12.5px;}
+
+/* panel block */
+.panel-block{background:var(--bg-1);border:1px solid var(--line);border-radius:10px;padding:13px 14px;margin-bottom:8px;}
+.panel-block-title{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.panel-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px;}
+.panel-row:last-child{border-bottom:none;}
+.panel-row .v{font-family:var(--mono);font-weight:700;color:var(--good);}
+
+/* perm grid */
+.perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+
+/* alert badge */
+.alert-badge{display:inline-flex;align-items:center;gap:5px;background:var(--bad-dim);border:1px solid var(--bad-line);color:var(--bad);border-radius:7px;padding:4px 10px;font-family:var(--mono);font-size:11px;font-weight:700;}
+
+/* field row */
+.field-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.field-row .fi{flex:1;}
+.field-rm{width:30px;height:30px;border-radius:7px;border:1px solid var(--bad-line);background:transparent;color:var(--bad);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+
+.ico-sm{display:inline-flex;vertical-align:middle;}
+@media(min-width:640px){.view{padding-top:20px;}}
+</style>
+</head>
+<body>
+<div id="rotateLock">
+  <div class="rotate-icon">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+  </div>
+  <div style="font-family:var(--mono);font-size:13px;color:var(--text-1);">Lütfen telefonunuzu dikey çevirin</div>
+</div>
+<div id="app">
+  <div id="loginView">
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-mark">D</div>
+        <h1 id="loginTitle">Stok Takip</h1>
+        <p>Devam etmek için ID ve PIN'inizle giriş yapın. Erişim yönetici tarafından belirlenir.</p>
+        <div style="margin-top:18px;text-align:center;">
+          <button class="quick-login-btn" id="quickLoginBtn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            ID + PIN ile giriş
+          </button>
+        </div>
+        <div id="loginStatus" class="login-status"></div>
+      </div>
+    </div>
+  </div>
+  <div id="mainApp" class="hidden">
+    <div class="status-strip"></div>
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-mark" id="brandMark">D</div>
+        <div>
+          <div class="brand-name" id="brandName">Takım & Elmas STOK</div>
+          <div class="brand-sub" id="userName">—</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="role-chip" id="roleChip">—</span>
+        <button class="btn-icon notif-dot hidden" id="notifBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        </button>
+        <button class="btn-icon" id="logoutBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 11-12.73 0"/><path d="M12 2v10"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="machine-strip-wrap hidden" id="machineStripWrap">
+      <div class="machine-strip" id="machineStrip"></div>
+    </div>
+    <div class="tabbar" id="tabbar">
+      <div class="tab active" data-tab="stock" id="tabStock">Stok</div>
+      <div class="tab" data-tab="balances" id="tabBalances">Bakiyem</div>
+      <div class="tab perm-tab hidden" data-perm="order_request" data-tab="orders" id="tabOrders">Sipariş</div>
+      <div class="tab perm-tab hidden" data-perm="view_orders" data-tab="a-talepler" id="tabTalepler">Talepler</div>
+      <div class="tab" data-tab="alerts" id="tabAlerts">Uyarılar</div>
+      <div class="tab admin-only hidden" data-tab="a-users" id="tabUsers">Kullanıcılar</div>
+      <div class="tab admin-only hidden" data-tab="a-groups" id="tabGroups">Gruplar</div>
+      <div class="tab admin-only hidden" data-tab="a-products">Ürünler</div>
+      <div class="tab admin-only hidden" data-tab="a-cats">Kategoriler</div>
+      <div class="tab admin-only hidden" data-tab="a-machines" id="tabMachines">Makineler</div>
+      <div class="tab admin-only hidden" data-tab="a-scrap">Hurda</div>
+      <div class="tab" data-tab="a-log" id="tabLog">Hareketler</div>
+      <div class="tab admin-only hidden" data-tab="a-settings">Ayarlar</div>
+    </div>
+    <!-- views -->
+    <div class="view" id="view-stock">
+      <div class="sec-title">Sık Kullanılan</div>
+      <div id="topCards"></div>
+      <div class="sec-title" style="margin-top:16px">Tüm Stok</div>
+      <div class="filter-row"><input class="search-box" id="stockSearch" placeholder="Ürün adı, etiket, iş parçası no, marka…"></div>
+      <div class="chip-row" id="catChips"></div>
+      <div id="stockList"></div>
+    </div>
+    <div class="view hidden" id="view-balances">
+      <div class="sec-title">Üzerimdeki Stok</div>
+      <div id="balList"></div>
+    </div>
+    <div class="view hidden" id="view-orders">
+      <div class="sec-title">Sipariş Talebi Oluştur</div>
+      <div id="orderFormWrap"></div>
+      <div class="sec-title" style="margin-top:16px">Taleplerim</div>
+      <div id="myOrderList"></div>
+    </div>
+    <div class="view hidden" id="view-a-talepler">
+      <div id="taleplerContent"></div>
+    </div>
+    <div class="view hidden" id="view-alerts">
+      <div class="sec-title">Stok Uyarıları</div>
+      <div id="alertList"></div>
+    </div>
+    <div class="view hidden" id="view-a-users">
+      <div class="sec-title">Kullanıcı Ekle</div>
+      <div id="addUserForm" style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:15px;margin-bottom:16px;"></div>
+      <div class="sec-title">Tüm Kullanıcılar</div>
+      <div id="userList"></div>
+    </div>
+    <div class="view hidden" id="view-a-groups">
+      <div class="sec-title">Kullanıcı Grupları</div>
+      <div id="groupList"></div>
+    </div>
+    <div class="view hidden" id="view-a-products">
+      <div class="sec-title">Ürün Yönetimi</div>
+      <div id="adminProdList"></div>
+    </div>
+    <div class="view hidden" id="view-a-cats">
+      <div class="sec-title">Kategori Ağacı</div>
+      <div id="catTree"></div>
+    </div>
+    <div class="view hidden" id="view-a-machines">
+      <div class="sec-title" id="machinesTitle">Makine Listesi</div>
+      <div id="machineList"></div>
+      <div class="sec-title" style="margin-top:18px" id="machineBalsTitle">Makine Bakiyeleri</div>
+      <div id="machineBalances"></div>
+    </div>
+    <div class="view hidden" id="view-a-scrap">
+      <div class="sec-title">Hurda Kayıtları</div>
+      <div id="scrapList"></div>
+    </div>
+    <div class="view hidden" id="view-a-log">
+      <div class="sec-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span>Son Hareketler</span>
+        <button class="btn-sm" id="txFilterBtn" style="position:relative;">Filtrele<span id="txFilterBadge" class="tab-badge hidden" style="position:static;margin-left:6px;"></span></button>
+      </div>
+      <div id="txLog" style="background:var(--bg-1);border:1px solid var(--line);border-radius:13px;padding:5px 14px;"></div>
+    </div>
+    <div class="view hidden" id="view-a-settings">
+      <div class="sec-title">Uygulama Ayarları</div>
+      <div id="settingsContent"></div>
+    </div>
+    <button class="fab hidden" id="fabAdd">＋</button>
+  </div>
+</div>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+<script>
+/* ===== CONFIG ===== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBVYw9vRUQ-gH679DMr84Ta2FNPPFp0MVE",
+  authDomain: "koruker-stok.firebaseapp.com",
+  databaseURL: "https://koruker-stok-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "koruker-stok",
+  storageBucket: "koruker-stok.firebasestorage.app",
+  messagingSenderId: "1016382885846",
+  appId: "1:1016382885846:web:1956739668f96e59ad9e77"
+};
+firebase.initializeApp(firebaseConfig);
+const rtdb = firebase.database();
+const fbAuth = firebase.auth();
+
+/* Sabit (hard-coded) kurtarma girişi: normal admin PIN'i unutulsa/bozulsa bile
+   bu ID+PIN her zaman admin olarak girişe izin verir. Sadece kod üzerinden
+   değiştirilebilir, arayüzden değil. */
+/* PIN doğrulaması ve admin/rol atama artık istemcide DEĞİL, Cloudflare
+   Worker'da (auth-worker.js) yapılıyor. Kurtarma ID/PIN'i de artık orada,
+   Worker'ın gizli (secret) ortam değişkenlerinde tutuluyor. */
+const AUTH_WORKER_URL = 'https://stok.mertkoruker.workers.dev';
+
+/* ===== FIREBASE AUTH GATE =====
+   RTDB Rules "auth != null" gerektiriyor. Tüm girişler (ID+PIN) anonim
+   Firebase oturumu üzerinden bu şartı sağlar; kullanıcı kimliği/izinleri
+   ayrıca /users düğümünden okunup uygulama içinde kontrol edilir. */
+let __authInitialState=null;
+function getInitialAuthState(){
+  if(!__authInitialState){
+    __authInitialState=new Promise((resolve)=>{
+      const unsub=fbAuth.onAuthStateChanged(u=>{ unsub(); resolve(u); });
+    });
+  }
+  return __authInitialState;
+}
+let __authReadyPromise=null;
+function ensureFirebaseAuth(){
+  if(fbAuth.currentUser) return Promise.resolve(fbAuth.currentUser);
+  if(!__authReadyPromise){
+    __authReadyPromise=(async()=>{
+      const initial=await getInitialAuthState();
+      if(initial) return initial;
+      const res=await fbAuth.signInAnonymously();
+      return res.user;
+    })();
+  }
+  return __authReadyPromise;
+}
+
+const ALL_PERMS = [
+  {id:'order_request',    label:'Sipariş Talebi Oluşturma'},
+  {id:'view_orders',      label:'Talepleri Görme'},
+  {id:'stock_pull',       label:'Stok Çekme'},
+  {id:'stock_return',     label:'Stok İade'},
+  {id:'stock_scrap',      label:'Hurdaya Düşürme'},
+  {id:'add_product',      label:'Yeni Ürün Girişi'},
+  {id:'edit_product',     label:'Ürün Düzenleme'},
+  {id:'manage_users',     label:'Kullanıcı Ekleme/Silme'},
+  {id:'manage_perms',     label:'Kullanıcı Yetkilerini Düzenleme'},
+  {id:'set_admin',        label:'Admin Belirleyebilme'},
+  {id:'manage_machines',  label:'Makine Yönetimi'},
+  {id:'manage_cats',      label:'Kategori Yönetimi'},
+  {id:'edit_balance',     label:'Kullanıcı Bakiyesini Düzenleme'},
+  {id:'view_all_tx',      label:'Tüm Kullanıcıların Hareketlerini Görme'}
+];
+
+/* ===== STATE ===== */
+let S = {
+  user:null, perms:[], products:[], categories:[], machines:[], fields:[],
+  groups:[], myBalances:[], allBalances:[], transactions:[], allUsers:[],
+  pendingRequests:[], pendingScrap:[], myRequests:[], orders:[], myOrders:[], pinResetRequests:[],
+  topProductIds:[], scrapLog:[], alerts:[], fieldTemplate:'',
+  labels:{}, activeCategory:null, searchTerm:'', activeTab:'stock',
+  txFilter:{dateFrom:null, dateTo:null, productIds:[], userEmails:[], machineIds:[]}
+};
+
+/* ===== UTIL ===== */
+const $  = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+function esc(s){ const d=document.createElement('div');d.textContent=s||'';return d.innerHTML; }
+function el(tag,cls,html){ const e=document.createElement(tag);if(cls)e.className=cls;if(html)e.innerHTML=html;return e; }
+function showToast(msg,type='good'){ const r=$('#toastRoot');r.innerHTML='';const t=el('div','toast '+type,esc(msg));r.appendChild(t);setTimeout(()=>t.remove(),3000); }
+function showLoading(msg='Yükleniyor…'){ $('#modalRoot').innerHTML=`<div class="loading-ov"><div class="spinner"></div><span>${esc(msg)}</span></div>`; }
+function hideLoading(){ const o=$('.loading-ov');if(o)o.remove(); }
+function closeSheet(){ const o=$('.sheet-overlay');if(o)o.remove(); }
+function hasPerm(p){ return S.user&&(S.user.role==='admin'||S.perms.includes(p)); }
+function fmtDate(ts){ try{return new Date(ts).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return ts||'';} }
+
+const ICONS = {
+  out:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  in:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>',
+  scrap:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6"/></svg>',
+  request:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M5 21v-2a6 6 0 0112 0v2"/><path d="M19 8h2M20 7v2"/></svg>',
+  order:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>',
+  box:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
+  receipt:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2h12v19l-3-2-3 2-3-2-3 2V2z"/><path d="M9 7h6M9 11h6"/></svg>',
+  check:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 5-5"/></svg>',
+  trash:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6"/></svg>',
+  wrench:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.83 2.83-2.83-2.83 2.83-2.83z"/></svg>',
+  bell:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>',
+  lock:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>',
+};
+const ICONS_LOCK = ICONS.lock;
+function icon(name,cls){ return cls?`<span class="${cls}">${ICONS[name]}</span>`:ICONS[name]; }
+
+/* ===== FIREBASE HELPERS ===== */
+function encodeEmailKey(email){ return String(email||'').trim().toLowerCase().replace(/\./g,'_'); }
+function decodeEmailKey(key){ return String(key||'').replace(/_/g,'.'); }
+function newId(prefix){ return prefix+'_'+Math.random().toString(16).slice(2,10); }
+async function sha256Hex(text){
+  const buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text)));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function toArr(v){ if(Array.isArray(v))return v; if(!v)return []; try{const p=JSON.parse(v);return Array.isArray(p)?p:[];}catch(e){return String(v).split(',').map(s=>s.trim()).filter(Boolean);} }
+function arrToStr(v){ return Array.isArray(v)?v.join(','):(v||''); }
+async function dbGet(path){ const snap=await rtdb.ref(path).once('value'); return snap.val(); }
+async function dbSet(path,val){ await rtdb.ref(path).set(val); }
+async function dbUpdate(path,val){ await rtdb.ref(path).update(val); }
+async function dbRemove(path){ await rtdb.ref(path).remove(); }
+function objToList(obj,extra){ return obj?Object.entries(obj).map(([id,v])=>({id,...(v||{}), ...(extra||{})})):[]; }
+
+function computePerms(user, groups){
+  if(!user) return [];
+  if(user.role==='admin') return ['*'];
+  const grp=(groups||[]).find(g=>g.id===user.groupId);
+  return grp?toArr(grp.permissions):[];
+}
+
+/* ===== API (Firebase RTDB tabanlı) ===== */
+async function api(action, payload={}){
+  try{
+    if(action==='quickLogin'){
+      // PIN doğrulaması ve rol atama artık sunucuda (Cloudflare Worker) yapılıyor.
+      const res=await fetch(AUTH_WORKER_URL+'/login',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({quickId:payload.quickId, quickPin:payload.quickPin})
+      });
+      let data; try{ data=await res.json(); }catch(e){ throw new Error('Sunucu yanıtı okunamadı.'); }
+      if(!res.ok) throw new Error(data.error||'Giriş başarısız.');
+      await fbAuth.signInWithCustomToken(data.customToken);
+      return {user:data.user, perms:data.perms||[]};
+    }
+    await ensureFirebaseAuth();
+    switch(action){
+
+      case 'login': {
+        const key=encodeEmailKey(payload.email);
+        const u=await dbGet('users/'+key);
+        if(!u) throw new Error('Bu email ile kayıtlı değil. Yöneticinizle iletişime geçin.');
+        if(u.status!=='approved' && u.role!=='admin') throw new Error('Hesabınız onay bekliyor.');
+        const groups=objToList(await dbGet('groups'));
+        const user={email:payload.email, ...u};
+        return {user, perms: user.role==='admin'?[]:computePerms(user,groups)};
+      }
+
+      case 'requestPinReset': {
+        if(!payload.quickId) throw new Error('Kullanıcı ID zorunlu.');
+        const id=newId('pinreq');
+        await dbSet('pinResetRequests/'+id,{timestamp:new Date().toISOString(), quickId:payload.quickId, status:'pending'});
+        return {ok:true};
+      }
+
+      case 'adminResolvePinReset': {
+        await dbUpdate('/',{['pinResetRequests/'+payload.requestId+'/status']:'resolved'});
+        return {ok:true};
+      }
+
+      case 'getAppData': {
+        const [productsObj,categoriesObj,machinesObj,fieldsObj,groupsObj,settingsObj,balancesObj] = await Promise.all([
+          dbGet('products'), dbGet('categories'), dbGet('machines'), dbGet('customFields'),
+          dbGet('groups'), dbGet('settings'), dbGet('balances')
+        ]);
+        const products=objToList(productsObj).map(p=>({...p, materials:arrToStr(p.materials), authorizedUsers:arrToStr(p.authorizedUsers), partNumbers:arrToStr(p.partNumbers), stock:Number(p.stock)||0}));
+        const categories=objToList(categoriesObj);
+        const machines=objToList(machinesObj).sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
+        const fields=objToList(fieldsObj);
+        const groups=objToList(groupsObj).map(g=>({...g, permissions:toArr(g.permissions)}));
+        const labels=settingsObj&&settingsObj.labels?(()=>{try{return JSON.parse(settingsObj.labels);}catch(e){return {};}})():{};
+        const fieldTemplate=settingsObj&&settingsObj.fieldTemplate||'';
+
+        // myBalances / allBalances flatten
+        const myKey=encodeEmailKey(S.user.email);
+        const myBalances=[];
+        const allBalancesList=[];
+        Object.entries(balancesObj||{}).forEach(([uKey,byProd])=>{
+          Object.entries(byProd||{}).forEach(([productId,byMac])=>{
+            Object.entries(byMac||{}).forEach(([machineId,quantity])=>{
+              const row={userEmail:decodeEmailKey(uKey),productId,machineId:(machineId==='_none_'||machineId==='null')?'':machineId,quantity:Number(quantity)||0};
+              allBalancesList.push(row);
+              if(uKey===myKey) myBalances.push(row);
+            });
+          });
+        });
+
+        const alerts=products.filter(p=>Number(p.alertThreshold)>0 && Number(p.stock)<=Number(p.alertThreshold));
+
+        const data={products,categories,machines,fields,groups,myBalances,fieldTemplate,labels,alerts,topProductIds:[]};
+
+        const canViewAllTx = S.user.role==='admin' || (S.perms||[]).includes('view_all_tx');
+        const transObj = await dbGet('transactions');
+        const allTx=objToList(transObj).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+        data.transactions = canViewAllTx ? allTx : allTx.filter(t=>t.userEmail===S.user.email);
+
+        if(S.user.role==='admin'){
+          const [usersObj,pendReqObj,pendScrapObj,orderObj,pinReqObj]=await Promise.all([
+            dbGet('users'), dbGet('pendingRequests'), dbGet('pendingScrap'), dbGet('orderRequests'), dbGet('pinResetRequests')
+          ]);
+          data.allUsers=objToList(usersObj).map(u=>({...u, email:decodeEmailKey(u.id)}));
+          data.allBalances=allBalancesList;
+          data.scrapLog=allTx.filter(t=>t.type==='hurda');
+          data.pendingRequests=objToList(pendReqObj).filter(r=>r.status==='pending');
+          data.pendingScrap=objToList(pendScrapObj).filter(s=>s.status==='pending');
+          data.orders=objToList(orderObj).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+          data.pinResetRequests=objToList(pinReqObj).filter(r=>r.status==='pending').sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+        } else {
+          const orderObj=await dbGet('orderRequests');
+          const mine=objToList(orderObj).filter(o=>o.userEmail===S.user.email).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+          data.myOrders=mine;
+          data.orders=mine; // Talepler sekmesinde normal kullanıcı sadece kendi taleplerini görür
+        }
+        return data;
+      }
+
+      case 'createOrder': {
+        const id=newId('ord');
+        await dbSet('orderRequests/'+id,{timestamp:new Date().toISOString(),userEmail:S.user.email,productId:payload.productId,quantity:Number(payload.quantity)||1,note:payload.note||'',status:'pending'});
+        return {ok:true};
+      }
+
+      case 'requestAccess': {
+        const id=newId('req');
+        await dbSet('pendingRequests/'+id,{timestamp:new Date().toISOString(),userEmail:S.user.email,productId:payload.productId,quantity:Number(payload.quantity)||1,machineId:payload.machineId||'_none_',status:'pending'});
+        return {ok:true};
+      }
+
+      case 'stockAction': {
+        const productId=payload.productId, type=payload.type, qty=Number(payload.quantity)||0, machineId=payload.machineId||'_none_';
+        if(qty<=0) throw new Error('Geçersiz adet.');
+        const userKey=encodeEmailKey(S.user.email);
+        const product=await dbGet('products/'+productId);
+        if(!product) throw new Error('Ürün bulunamadı.');
+        const balPath='balances/'+userKey+'/'+productId+'/'+machineId;
+        const curBal=Number(await dbGet(balPath))||0;
+        const updates={};
+        if(type==='cekim'){
+          const authorized=String(product.authorizedUsers||'').split(',').map(s=>s.trim()).filter(Boolean);
+          const hasAuth=authorized.length===0||authorized.includes(S.user.email)||S.user.role==='admin';
+          if(!hasAuth) throw new Error('Bu ürünü çekmek için yetkiniz yok. Önce yetki talebi gönderin.');
+          if(Number(product.stock)<qty) throw new Error('Yetersiz stok.');
+          updates['products/'+productId+'/stock']=Number(product.stock)-qty;
+          updates[balPath]=curBal+qty;
+          // Aynı ürün+makinede zaten bakiyesi varsa: eskisi otomatik hurda bildirimi olarak admin onayına düşer
+          if(curBal>0){
+            const scrapId=newId('scrap');
+            updates['pendingScrap/'+scrapId]={
+              timestamp:new Date().toISOString(),
+              triggerEmail:S.user.email,
+              machineId,
+              productId,
+              oldUserEmail:S.user.email,
+              oldQuantity:curBal,
+              status:'pending'
+            };
+          }
+        } else if(type==='iade'){
+          if(curBal<qty) throw new Error('Üzerinizde bu kadar stok yok.');
+          updates['products/'+productId+'/stock']=Number(product.stock)+qty;
+          updates[balPath]=curBal-qty;
+        } else if(type==='hurda'){
+          if(curBal<qty) throw new Error('Üzerinizde bu kadar stok yok.');
+          updates[balPath]=curBal-qty;
+        } else {
+          throw new Error('Bilinmeyen işlem tipi.');
+        }
+        const txId=newId('tx');
+        updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:S.user.email,productId,type,quantity:qty,machineId};
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminHandlePendingScrap': {
+        const s=await dbGet('pendingScrap/'+payload.scrapId);
+        if(!s) throw new Error('Kayıt bulunamadı.');
+        const updates={};
+        updates['pendingScrap/'+payload.scrapId+'/status']=payload.approved?'approved':'rejected';
+        if(payload.approved){
+          const uKey=encodeEmailKey(s.oldUserEmail);
+          const balPath='balances/'+uKey+'/'+s.productId+'/'+(s.machineId||'_none_');
+          const curBal=Number(await dbGet(balPath))||0;
+          updates[balPath]=Math.max(0,curBal-Number(s.oldQuantity||0));
+          const txId=newId('tx');
+          updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:s.oldUserEmail,productId:s.productId,type:'hurda',quantity:Number(s.oldQuantity||0),machineId:s.machineId||'_none_'};
+        }
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminHandleRequest': {
+        const r=await dbGet('pendingRequests/'+payload.requestId);
+        if(!r) throw new Error('Kayıt bulunamadı.');
+        const updates={};
+        updates['pendingRequests/'+payload.requestId+'/status']=payload.approved?'approved':'rejected';
+        if(payload.approved){
+          const product=await dbGet('products/'+r.productId);
+          if(!product) throw new Error('Ürün bulunamadı.');
+          const qty=Number(r.quantity)||0;
+          if(Number(product.stock)<qty) throw new Error('Yetersiz stok.');
+          const uKey=encodeEmailKey(r.userEmail);
+          const balPath='balances/'+uKey+'/'+r.productId+'/'+(r.machineId||'_none_');
+          const curBal=Number(await dbGet(balPath))||0;
+          updates['products/'+r.productId+'/stock']=Number(product.stock)-qty;
+          updates[balPath]=curBal+qty;
+          const txId=newId('tx');
+          updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:r.userEmail,productId:r.productId,type:'cekim',quantity:qty,machineId:r.machineId||'_none_'};
+        }
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminHandleOrder': {
+        const updates={};
+        updates['orderRequests/'+payload.orderId+'/status']=payload.approved?'fulfilled':'rejected';
+        updates['orderRequests/'+payload.orderId+'/adminNote']=payload.note||'';
+        updates['orderRequests/'+payload.orderId+'/resolvedAt']=new Date().toISOString();
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminSaveUser': {
+        if(!payload.targetEmail) throw new Error('Email zorunlu.');
+        const key=encodeEmailKey(payload.targetEmail);
+        const existing=await dbGet('users/'+key)||{};
+        const merged={...existing};
+        ['displayName','quickId','quickPin','groupId','role','status'].forEach(f=>{
+          if(payload[f]!==undefined && payload[f]!=='') merged[f]=payload[f];
+        });
+        if(!existing || Object.keys(existing).length===0){
+          merged.status=merged.status||'pending';
+          merged.role=merged.role||'operator';
+          merged.createdAt=new Date().toISOString();
+        }
+        await dbSet('users/'+key,merged);
+        return {ok:true};
+      }
+
+      case 'adminDeleteUser': {
+        await dbRemove('users/'+encodeEmailKey(payload.targetEmail));
+        return {ok:true};
+      }
+
+      case 'adminAdjustBalance': {
+        const uKey=encodeEmailKey(payload.targetEmail);
+        await dbSet('balances/'+uKey+'/'+payload.productId+'/'+(payload.machineId||'_none_'),Number(payload.newQuantity)||0);
+        return {ok:true};
+      }
+
+      case 'adminScrapFromBalance': {
+        const uKey=encodeEmailKey(payload.targetEmail);
+        const balPath='balances/'+uKey+'/'+payload.productId+'/'+(payload.machineId||'_none_');
+        const curBal=Number(await dbGet(balPath))||0;
+        const qty=Number(payload.quantity)||0;
+        if(curBal<qty) throw new Error('Bakiye yetersiz.');
+        const updates={};
+        updates[balPath]=curBal-qty;
+        const txId=newId('tx');
+        updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:payload.targetEmail,productId:payload.productId,type:'hurda',quantity:qty,machineId:payload.machineId||'_none_'};
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminDeleteGroup': {
+        await dbRemove('groups/'+payload.id);
+        return {ok:true};
+      }
+
+      case 'adminSaveGroup': {
+        const id=payload.id||newId('grp');
+        await dbSet('groups/'+id,{name:payload.name, permissions:payload.permissions||[]});
+        return {ok:true};
+      }
+
+      case 'adminDeleteProduct': {
+        await dbRemove('products/'+payload.id);
+        return {ok:true};
+      }
+
+      case 'adminSaveProduct': {
+        const id=payload.id||newId('prod');
+        let customData={}; try{customData=JSON.parse(payload.customData||'{}');}catch(e){}
+        const existing=payload.id?(await dbGet('products/'+id)||{}):{};
+        const prod={
+          name:payload.name, brand:payload.brand||'', categoryId:payload.categoryId||'',
+          stock:Number(payload.stock)||0, unit:payload.unit||'',
+          partNumbers:payload.partNumbers||'', materials:payload.materials||'',
+          authorizedUsers:payload.authorizedUsers||'', customData,
+          alertThreshold:Number(payload.alertThreshold)||0,
+          createdAt: existing.createdAt || new Date().toISOString()
+        };
+        await dbSet('products/'+id,prod);
+        return {ok:true};
+      }
+
+      case 'adminDeleteCategory': {
+        await dbRemove('categories/'+payload.id);
+        return {ok:true};
+      }
+
+      case 'adminSaveCategory': {
+        const id=payload.id||newId('cat');
+        const obj={name:payload.name}; if(payload.parentId) obj.parentId=payload.parentId;
+        await dbSet('categories/'+id,obj);
+        return {ok:true};
+      }
+
+      case 'adminDeleteMachine': {
+        await dbRemove('machines/'+payload.id);
+        return {ok:true};
+      }
+
+      case 'adminSaveMachine': {
+        const id=payload.id||newId('mac');
+        const existing=payload.id?(await dbGet('machines/'+id)||{}):{};
+        let order=existing.order;
+        if(order===undefined){
+          const allMac=objToList(await dbGet('machines'));
+          order=allMac.length?Math.max(...allMac.map(m=>Number(m.order)||0))+1:0;
+        }
+        await dbSet('machines/'+id,{name:payload.name, active: existing.active!==undefined?existing.active:true, order});
+        return {ok:true};
+      }
+
+      case 'adminReorderMachines': {
+        const updates={};
+        (payload.order||[]).forEach((id,idx)=>{ updates['machines/'+id+'/order']=idx; });
+        await dbUpdate('/',updates);
+        return {ok:true};
+      }
+
+      case 'adminSaveField': {
+        const id=newId('fld');
+        await dbSet('customFields/'+id,{name:payload.name, type:payload.type, options:payload.options||''});
+        return {ok:true};
+      }
+
+      case 'adminSetFieldTemplate': {
+        await dbSet('settings/fieldTemplate',payload.template||'');
+        return {ok:true};
+      }
+
+      case 'adminSaveSetting': {
+        await dbSet('settings/'+payload.key, payload.value);
+        return {ok:true};
+      }
+
+      default:
+        throw new Error('Bilinmeyen işlem: '+action);
+    }
+  }catch(e){
+    throw new Error(e.message||'Bir hata oluştu.');
+  }
+}
+
+/* ===== HIZLI GİRİŞ ===== */
+$('#quickLoginBtn').onclick=()=>openQuickLoginSheet();
+
+function openQuickLoginSheet(){
+  const overlay=el('div','sheet-overlay'); const sheet=el('div','sheet');
+  sheet.innerHTML=`<div class="sheet-handle"></div>
+    <h2>Hızlı Giriş</h2><div class="sub">Yöneticinizin size verdiği ID ve PIN'i girin.</div>
+    <div id="qlErr"></div>
+    <div class="fg"><label class="fl">Kullanıcı ID</label><input class="fi" id="qlId" placeholder="Örn: MERT01" autocomplete="off" spellcheck="false"></div>
+    <div class="fg"><label class="fl">PIN</label><input class="fi" id="qlPin" type="password" placeholder="••••" autocomplete="off"></div>
+    <button class="btn-primary" id="qlBtn">Giriş Yap</button>
+    <div style="text-align:center;margin:10px 0;"><a href="#" id="qlForgot" style="color:var(--muted);font-size:13px;text-decoration:underline;">Şifremi unuttum</a></div>
+    <button class="btn-secondary" id="qlCancel">İptal</button>`;
+  overlay.appendChild(sheet); $('#modalRoot').appendChild(overlay);
+  sheet.querySelector('#qlCancel').onclick=closeSheet;
+  sheet.querySelector('#qlForgot').onclick=(e)=>{ e.preventDefault(); openForgotPinSheet(sheet.querySelector('#qlId').value.trim()); };
+  const doLogin=async()=>{
+    const quickId=sheet.querySelector('#qlId').value.trim();
+    const quickPin=sheet.querySelector('#qlPin').value.trim();
+    if(!quickId||!quickPin){sheet.querySelector('#qlErr').innerHTML='<div class="alert bad">ID ve PIN zorunlu.</div>';return;}
+    const btn=sheet.querySelector('#qlBtn'); btn.disabled=true; btn.textContent='Kontrol ediliyor…';
+    try{
+      const d=await api('quickLogin',{quickId,quickPin,email:'__quick__'});
+      S.user=d.user; S.perms=d.perms||[];
+      try{localStorage.setItem('depo_quick_id',quickId); localStorage.setItem('depo_quick_pin',quickPin);}catch(e){}
+      closeSheet(); showLoading('Veriler yükleniyor…');
+      await loadAppData(); hideLoading(); enterApp();
+    }catch(err){
+      sheet.querySelector('#qlErr').innerHTML=`<div class="alert bad">${esc(err.message)}</div>`;
+      btn.disabled=false; btn.textContent='Giriş Yap';
+    }
+  };
+  sheet.querySelector('#qlBtn').onclick=doLogin;
+  sheet.querySelector('#qlPin').onkeydown=e=>{if(e.key==='Enter')doLogin();};
+}
+
+function openForgotPinSheet(prefillId){
+  const overlay=el('div','sheet-overlay'); const sheet=el('div','sheet');
+  sheet.innerHTML=`<div class="sheet-handle"></div>
+    <h2>Şifremi Unuttum</h2><div class="sub">Kullanıcı ID'nizi girin, yöneticinize sıfırlama talebi düşsün.</div>
+    <div id="fpErr"></div>
+    <div class="fg"><label class="fl">Kullanıcı ID</label><input class="fi" id="fpId" value="${esc(prefillId||'')}" placeholder="Örn: MERT01" autocomplete="off" spellcheck="false"></div>
+    <button class="btn-primary" id="fpBtn">Talep Gönder</button>
+    <button class="btn-secondary" id="fpCancel">İptal</button>`;
+  overlay.appendChild(sheet); $('#modalRoot').appendChild(overlay);
+  sheet.querySelector('#fpCancel').onclick=closeSheet;
+  sheet.querySelector('#fpBtn').onclick=async()=>{
+    const quickId=sheet.querySelector('#fpId').value.trim();
+    if(!quickId){sheet.querySelector('#fpErr').innerHTML='<div class="alert bad">Kullanıcı ID zorunlu.</div>';return;}
+    const btn=sheet.querySelector('#fpBtn'); btn.disabled=true; btn.textContent='Gönderiliyor…';
+    try{
+      await api('requestPinReset',{quickId});
+      sheet.innerHTML=`<div class="sheet-handle"></div><h2>Talep Gönderildi</h2>
+        <div class="alert good">Yöneticinize bir sıfırlama bildirimi düştü. PIN'iniz yenilendiğinde size bildirilecek.</div>
+        <button class="btn-primary" id="fpOk">Tamam</button>`;
+      sheet.querySelector('#fpOk').onclick=closeSheet;
+    }catch(err){
+      sheet.querySelector('#fpErr').innerHTML=`<div class="alert bad">${esc(err.message)}</div>`;
+      btn.disabled=false; btn.textContent='Talep Gönder';
+    }
+  };
+}
+
+async function tryQuickAutoLogin(){
+  let qid,qpin;
+  try{qid=localStorage.getItem('depo_quick_id');qpin=localStorage.getItem('depo_quick_pin');}catch(e){return false;}
+  if(!qid||!qpin) return false;
+  try{
+    const d=await api('quickLogin',{quickId:qid,quickPin:qpin,email:'__quick__'});
+    S.user=d.user; S.perms=d.perms||[];
+    showLoading('Veriler yükleniyor…');
+    await loadAppData(); hideLoading(); enterApp(); return true;
+  }catch(err){
+    try{localStorage.removeItem('depo_quick_id');localStorage.removeItem('depo_quick_pin');}catch(e){}
+    return false;
+  }
+}
+
+/* ===== LOAD DATA ===== */
+async function loadAppData(){
+  const d=await api('getAppData',{});
+  S.products=d.products||[];
+  S.categories=d.categories||[];
+  S.machines=d.machines||[];
+  S.fields=d.fields||[];
+  S.groups=d.groups||[];
+  S.myBalances=d.myBalances||[];
+  S.topProductIds=d.topProductIds||[];
+  S.fieldTemplate=d.fieldTemplate||'';
+  S.labels=d.labels||{};
+  S.alerts=d.alerts||[];
+  if(d.allBalances) S.allBalances=d.allBalances;
+  if(d.transactions) S.transactions=d.transactions;
+  if(d.allUsers) S.allUsers=d.allUsers;
+  if(d.pendingRequests) S.pendingRequests=d.pendingRequests;
+  if(d.pendingScrap) S.pendingScrap=d.pendingScrap;
+  if(d.pinResetRequests) S.pinResetRequests=d.pinResetRequests; else S.pinResetRequests=[];
+  if(d.orders) S.orders=d.orders;
+  if(d.myOrders) S.myOrders=d.myOrders;
+  if(d.scrapLog) S.scrapLog=d.scrapLog;
+  if(d.myRequests) S.myRequests=d.myRequests;
+  if($('#machineStrip')) renderMachineStrip();
+  updateTabBadges();
+}
+
+/* ===== APP ENTRY ===== */
+function enterApp(){
+  $('#loginView').classList.add('hidden');
+  $('#mainApp').classList.remove('hidden');
+  const dname=S.user.displayName||S.user.name||S.user.email;
+  $('#userName').textContent=dname;
+  const chip=$('#roleChip');
+  if(S.user.role==='admin'){
+    chip.textContent='Admin'; chip.className='role-chip';
+    $$('.admin-only').forEach(t=>t.classList.remove('hidden'));
+    if((S.pendingRequests.length+S.pendingScrap.length)>0) $('#notifBtn').classList.remove('hidden');
+  } else {
+    const grp=S.groups.find(g=>g.id===S.user.groupId);
+    chip.textContent=grp?grp.name:'Operatör';
+    chip.className='role-chip '+(grp?'group':'operator');
+    $$('.admin-only').forEach(t=>t.classList.add('hidden'));
+    $('#notifBtn').classList.add('hidden');
+  }
+  // yetki bazlı sekmeler
+  $$('.perm-tab').forEach(t=>{
+    const perm=t.dataset.perm;
+    t.classList.toggle('hidden', !hasPerm(perm));
+  });
+  // uyarılar sekmesi: sadece admin veya ürün ekleme yetkisi olanlar görebilir
+  const alertsTabEl=$('#tabAlerts');
+  if(alertsTabEl) alertsTabEl.classList.toggle('hidden', !(S.user.role==='admin'||hasPerm('add_product')));
+  // sekme isimlerini labels ile güncelle
+  applyLabels();
+  renderMachineStrip();
+  renderView('stock');
+}
+
+function applyLabels(){
+  if(S.labels.appTitle) { $('#brandName').textContent=S.labels.appTitle; document.title=S.labels.appTitle; }
+  if(S.labels.machineTab) { const t=$('#tabMachines'); if(t) t.textContent=S.labels.machineTab; }
+  if(S.labels.machineTitle) { const e=$('#machinesTitle'); if(e) e.textContent=S.labels.machineTitle+' Listesi'; }
+  if(S.labels.machineBalsTitle) { const e=$('#machineBalsTitle'); if(e) e.textContent=S.labels.machineBalsTitle+' Bakiyeleri'; }
+}
+
+function updateTabBadges(){
+  const alertsTab=$('#tabAlerts');
+  if(alertsTab){
+    const existing=alertsTab.querySelector('.tab-badge');
+    if(existing) existing.remove();
+    if(S.alerts.length>0){
+      const b=el('span','tab-badge',String(S.alerts.length));
+      alertsTab.appendChild(b);
+    }
+  }
+  const talepTab=$('#tabTalepler');
+  if(talepTab){
+    const existing=talepTab.querySelector('.tab-badge');
+    if(existing) existing.remove();
+    const pendingCount=(S.pendingRequests||[]).length+(S.pendingScrap||[]).length+(S.pinResetRequests||[]).length+
+      (S.orders||[]).filter(o=>o.status==='pending').length;
+    if(pendingCount>0 && S.user&&S.user.role==='admin'){
+      const b=el('span','tab-badge',String(pendingCount));
+      talepTab.appendChild(b);
+    }
+  }
+}
+
+/* ===== MAKİNE ŞERİDİ ===== */
+function renderMachineStrip(){
+  const wrap=$('#machineStripWrap'); const strip=$('#machineStrip');
+  if(!S.machines.length){wrap.classList.add('hidden');return;}
+  const macLabel=S.labels.machineChip||'';
+  const sourceBals=S.user.role==='admin'?S.allBalances:S.myBalances;
+  const totals={};
+  (sourceBals||[]).forEach(b=>{const mid=b.machineId||'';if(!mid)return;totals[mid]=(totals[mid]||0)+Number(b.quantity||0);});
+  strip.innerHTML='';
+  S.machines.forEach(m=>{
+    const total=totals[m.id]||0;
+    const label=macLabel?macLabel+'-'+m.name:m.name;
+    const chip=el('div','m-chip');
+    chip.innerHTML=`<span class="dot ${total>0?'on':'idle'}"></span><span class="mid">${esc(label)}</span><span class="mct">⦁ ${total}</span>`;
+    chip.onclick=()=>openMachineDetailSheet(m);
+    strip.appendChild(chip);
+  });
+  wrap.classList.remove('hidden');
+}
+
+/* ===== MAKİNE DETAY SHEET ===== */
+function openMachineDetailSheet(machine){
+  const overlay=el('div','sheet-overlay'); const sheet=el('div','sheet');
+
+  // Bu makineye ait mevcut bakiyeler
+  const sourceBals=S.user.role==='admin'?S.allBalances:S.myBalances;
+  const macBals=(sourceBals||[]).filter(b=>b.machineId===machine.id&&Number(b.quantity)>0);
+
+  // Bu makineye ait tüm hareketler (admin görür, operatör sadece kendinkini)
+  const sourceTx=S.user.role==='admin'?(S.transactions||[]):(S.transactions||[]).filter(t=>t.userEmail===S.user.email);
+  const macTx=sourceTx.filter(t=>t.machineId===machine.id).sort((a,b)=>String(b.timestamp).localeCompare(String(a.timestamp)));
+
+  const totalBal=macBals.reduce((s,b)=>s+Number(b.quantity||0),0);
+
+  // Aktif bakiye satırları
+  const balRows=macBals.length?macBals.map(b=>{
+    const prod=S.products.find(p=>p.id===b.productId);
+    const user=(S.allUsers||[]).find(u=>u.email===b.userEmail);
+    return `<div class="panel-row">
+      <span>${esc(prod?prod.name:b.productId)}<span style="color:var(--text-2)"> · ${esc(user?user.displayName||user.name:b.userEmail)}</span></span>
+      <span class="v">${b.quantity}</span>
+    </div>`;
+  }).join(''):'<div style="padding:10px 0;font-size:12.5px;color:var(--text-2)">Bu makinede aktif bakiye yok.</div>';
+
+  // Hareket geçmişi satırları
+  const txRows=macTx.length?macTx.slice(0,50).map(tx=>{
+    const prod=S.products.find(p=>p.id===tx.productId);
+    const user=(S.allUsers||[]).find(u=>u.email===tx.userEmail);
+    const typeLabel={cekim:'Çekim',iade:'İade',hurda:'Hurda',admin_duzeltme:'Düzeltme'}[tx.type]||tx.type;
+    return `<div class="tx-row">
+      <span class="tx-type tx-${tx.type}">${typeLabel}</span>
+      <div class="tx-detail">
+        <div class="tx-main">${esc(prod?prod.name:tx.productId)} · ${tx.quantity} ${prod?esc(prod.unit||'adet'):''}</div>
+        <div class="tx-sub">${esc(user?user.displayName||user.name:tx.userEmail)} · ${fmtDate(tx.timestamp)}${tx.note?' · '+esc(tx.note):''}</div>
+      </div>
+    </div>`;
+  }).join(''):'<div class="empty" style="padding:24px"><p>Henüz hareket yok.</p></div>';
+
+  sheet.innerHTML=`
+    <div class="sheet-handle"></div>
+    <h2>${esc(machine.name)}</h2>
+    <div class="sub">Toplam aktif bakiye: ${totalBal} adet</div>
+
+    <div class="sec-title" style="margin-top:0">Aktif Bakiye</div>
+    <div class="panel-block" style="margin-bottom:16px">${balRows}</div>
+
+    <div class="sec-title">Hareket Geçmişi <span style="color:var(--text-2);font-size:9px;font-weight:400">(son 50)</span></div>
+    <div style="background:var(--bg-1);border:1px solid var(--line);border-radius:10px;padding:4px 14px;">${txRows}</div>
+
+    <button class="btn-secondary" id="mDetailClose" style="margin-top:14px">Kapat</button>`;
+
+  overlay.appendChild(sheet); $('#modalRoot').appendChild(overlay);
+  sheet.querySelector('#mDetailClose').onclick=closeSheet;
+  overlay.onclick=e=>{if(e.target===overlay)closeSheet();};
+}
+
+/* ===== TABS ===== */
+$('#tabbar').addEventListener('click',e=>{
+  const tab=e.target.closest('.tab');
+  if(!tab)return;
+  $$('.tab').forEach(t=>t.classList.remove('active'));
+  tab.classList.add('active');
+  renderView(tab.dataset.tab);
+});
+
+function renderView(name){
+  S.activeTab=name;
+  $$('.view').forEach(v=>v.classList.add('hidden'));
+  const v=$('#view-'+name); if(v)v.classList.remove('hidden');
+  const fab=$('#fabAdd'); fab.classList.add('hidden'); fab.onclick=null;
+  if(name==='stock'){renderTopCards();renderCatChips();renderStockList();}
+  else if(name==='balances'){renderBalances();}
+  else if(name==='orders'){renderOrderForm();renderMyOrders();}
+  else if(name==='a-talepler'){renderTalepler();}
+  else if(name==='alerts'){renderAlerts();}
+  else if(name==='a-users'){renderAddUserForm();renderUserList();}
+  else if(name==='a-groups'){renderGroupList();fab.classList.remove('hidden');fab.onclick=()=>openGroupSheet();}
+  else if(name==='a-products'){renderAdminProducts();fab.classList.remove('hidden');fab.onclick=()=>openProductSheet();}
+  else if(name==='a-cats'){renderCatTree();fab.classList.remove('hidden');fab.onclick=()=>openCatSheet();}
+  else if(name==='a-machines'){renderMachineList();renderMachineBalances();fab.classList.remove('hidden');fab.onclick=()=>openMachineSheet();}
+  else if(name==='a-scrap'){renderScrapList();}
+  else if(name==='a-log'){renderTxLog();}
+  else if(name==='a-settings'){renderSettings();}
+}
+
+/* ===== CAT HELPERS ===== */
+function getCatPath(id){
+  const parts=[];let c=S.categories.find(x=>x.id===id);
+  while(c){parts.unshift(c.name);c=c.parentId?S.categories.find(x=>x.id===c.parentId):null;}
+  return parts.join(' › ')||'—';
+}
+function getRootCats(){ return S.categories.filter(c=>!c.parentId); }
+function getChildCats(pid){ return S.categories.filter(c=>c.parentId===pid); }
+
+/* ===== PRODUCT SEARCH ===== */
+function productMatches(p,term,catId){
+  const matchCat=(catId===null)?true:isInCat(p.categoryId,catId);
+  if(!term)return matchCat;
+  let customStr='';
+  try{const cd=typeof p.customData==='string'?JSON.parse(p.customData||'{}'):(p.customData||{});Object.values(cd).forEach(v=>{customStr+=' '+v;});}catch(e){}
+  const hay=[p.name,p.brand,p.partNumbers,p.materials,getCatPath(p.categoryId),customStr].join(' ').toLowerCase();
+  return matchCat&&hay.includes(term.toLowerCase());
+}
+function isInCat(catId,filterId){
+  if(catId===filterId)return true;
+  let c=S.categories.find(x=>x.id===catId);
+  while(c&&c.parentId){if(c.parentId===filterId)return true;c=S.categories.find(x=>x.id===c.parentId);}
+  return false;
+}
+
+/* ===== STOCK VIEW ===== */
+function stockPillClass(s){if(s<=0)return 'low';if(s<10)return 'mid';return 'ok';}
+
+function renderTopCards(){
+  const wrap=$('#topCards');wrap.innerHTML='';
+  const tops=S.topProductIds.map(id=>S.products.find(p=>p.id===id)).filter(Boolean);
+  if(!tops.length){wrap.innerHTML='<div class="empty" style="padding:12px"><p style="font-size:11.5px">Henüz hareket yok; sık kullanılanlar otomatik belirir.</p></div>';return;}
+  tops.forEach(p=>wrap.appendChild(makeProdCard(p,true)));
+}
+function renderCatChips(){
+  const wrap=$('#catChips');wrap.innerHTML='';
+  const all=el('div','chip'+(S.activeCategory===null?' active':''),'Tümü');
+  all.onclick=()=>{S.activeCategory=null;renderCatChips();renderStockList();};
+  wrap.appendChild(all);
+  getRootCats().forEach(c=>{
+    const chip=el('div','chip'+(S.activeCategory===c.id?' active':''),esc(c.name));
+    chip.onclick=()=>{S.activeCategory=c.id;renderCatChips();renderStockList();};
+    wrap.appendChild(chip);
+  });
+}
+$('#stockSearch').addEventListener('input',e=>{S.searchTerm=e.target.value;renderStockList();});
+function renderStockList(){
+  const wrap=$('#stockList');wrap.innerHTML='';
+  const list=S.products.filter(p=>productMatches(p,S.searchTerm,S.activeCategory));
+  if(!list.length){wrap.appendChild(el('div','empty',`<div class="ico">${ICONS.box}</div><p>Ürün bulunamadı.</p>`));return;}
+  list.forEach(p=>wrap.appendChild(makeProdCard(p,false)));
+}
+function makeProdCard(p,isTop){
+  const stock=Number(p.stock)||0;
+  const sc=stockPillClass(stock);
+  const authorized=String(p.authorizedUsers||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const hasAuth=authorized.length===0||authorized.includes(S.user.email)||S.user.role==='admin';
+  const card=el('div','prod-card '+sc+(isTop?' top-card':''));
+  const partNos=(p.partNumbers||'').split(',').map(s=>s.trim()).filter(Boolean).slice(0,2).map(n=>`<span class="tag">${esc(n)}</span>`).join('');
+  const barPct=Math.max(stock<=0?2:8,Math.min(100,Math.round((stock/25)*100)));
+  const barColor=sc==='ok'?'var(--good)':sc==='mid'?'var(--accent)':'var(--bad)';
+  card.innerHTML=`
+    <div class="gauge">
+      <div class="gauge-num ${sc}">${stock}</div>
+      <div class="gauge-unit">${esc(p.unit||'adet')}</div>
+      <div class="gauge-bar"><i style="width:${barPct}%;background:${barColor}"></i></div>
+    </div>
+    <div class="prod-info">
+      <div class="prod-name">${esc(p.name)}${p.brand?` <span style="font-size:11px;color:var(--text-2);font-weight:400">· ${esc(p.brand)}</span>`:''}</div>
+      <div class="prod-meta">${esc(getCatPath(p.categoryId))}${partNos}${!hasAuth?'<span class="lock-ico">'+ICONS_LOCK+'</span>':''}</div>
+    </div>`;
+  card.onclick=()=>openStockActionSheet(p);
+  return card;
+}
+
+/* ===== STOCK ACTION SHEET ===== */
+function openStockActionSheet(product){
+  const myBalsForProduct=S.myBalances.filter(b=>b.productId===product.id);
+  const totalBalQty=myBalsForProduct.reduce((s,b)=>s+Number(b.quantity||0),0);
+  const authorized=String(product.authorizedUsers||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const hasAuth=authorized.length===0||authorized.includes(S.user.email)||S.user.role==='admin';
+  const stock=Number(product.stock)||0;
+  const canPull=hasPerm('stock_pull');
+  const canReturn=hasPerm('stock_return');
+  const canScrap=hasPerm('stock_scrap');
+  const canOrder=hasPerm('order_request');
+
+  const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
+  sheet.innerHTML=`
+    <div class="sheet-handle"></div>
+    <h2>${esc(product.name)}</h2>
+    <div class="sub">Stokta: ${stock} ${product.unit||'adet'} · Bakiyenizde: ${totalBalQty}</div>
+    <div id="sErr"></div>
+    <div class="act-grid">
+      <div class="act-card${(!hasAuth||!canPull)?' disabled':''}" data-t="cekim"><span class="act-ico">${ICONS.out}</span><span class="act-label">Çekim</span></div>
+      <div class="act-card${(totalBalQty<=0||!canReturn)?' disabled':''}" data-t="iade"><span class="act-ico">${ICONS.in}</span><span class="act-label">İade</span></div>
+      <div class="act-card${(totalBalQty<=0||!canScrap)?' disabled':''}" data-t="hurda"><span class="act-ico">${ICONS.scrap}</span><span class="act-label">Hurda</span></div>
+      ${!hasAuth&&canPull?`<div class="act-card" data-t="request"><span class="act-ico">${ICONS.request}</span><span class="act-label">Yetki İste</span></div>`:''}
+      ${canOrder?`<div class="act-card" data-t="order"><span class="act-ico">${ICONS.order}</span><span class="act-label">Sipariş</span></div>`:''}
+    </div>
+    <div id="dynFields"></div>
+    <button class="btn-primary" id="confirmBtn" disabled>Onayla</button>
+    <button class="btn-secondary" id="cancelBtn">Vazgeç</button>`;
+  overlay.appendChild(sheet);$('#modalRoot').appendChild(overlay);
+
+  let selType=null;
+  sheet.querySelectorAll('.act-card:not(.disabled)').forEach(c=>{
+    c.onclick=()=>{
+      sheet.querySelectorAll('.act-card').forEach(x=>x.classList.remove('sel'));
+      c.classList.add('sel'); selType=c.dataset.t;
+      renderDynFields(selType); $('#confirmBtn').disabled=false;
+    };
+  });
+
+  function machineBalQty(machineId){
+    const b=myBalsForProduct.find(x=>String(x.machineId||'')===(machineId||''));
+    return b?Number(b.quantity):0;
+  }
+
+  function renderDynFields(type){
+    const dyn=$('#dynFields');
+    if(type==='request'){
+      dyn.innerHTML=`<div class="fg"><label class="fl">Miktar (isteğe bağlı)</label><input class="fi" type="number" id="reqQty" value="1" min="1"></div>
+      <div class="fg"><label class="fl">Kullanılacak Makine</label><select class="fs" id="reqMac"><option value="">Seçin…</option>${S.machines.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></div>`;
+      return;
+    }
+    if(type==='order'){
+      dyn.innerHTML=`<div class="fg"><label class="fl">Talep Miktarı</label><div class="stepper"><button type="button" class="step-btn" id="qMinus">−</button><input class="fi" type="number" id="qInput" value="1" min="1"><button type="button" class="step-btn" id="qPlus">+</button></div></div>
+      <div class="fg"><label class="fl">Not (isteğe bağlı)</label><input class="fi" id="orderNote" placeholder="Neden ihtiyaç var?"></div>`;
+      $('#qMinus').onclick=()=>{const i=$('#qInput');i.value=Math.max(1,Number(i.value)-1);};
+      $('#qPlus').onclick=()=>{const i=$('#qInput');i.value=Number(i.value)+1;};
+      return;
+    }
+    if(type==='cekim'){
+      dyn.innerHTML=`
+        <div class="fg"><label class="fl">Makine <span style="color:var(--bad)">*</span></label><select class="fs" id="macSel"><option value="">Seçin…</option>${S.machines.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></div>
+        <div class="fg"><label class="fl">Adet (maks. <span id="maxQtyLbl">${stock}</span>)</label><div class="stepper"><button type="button" class="step-btn" id="qMinus">−</button><input class="fi" type="number" id="qInput" value="1" min="1" max="${stock}"><button type="button" class="step-btn" id="qPlus">+</button></div></div>`;
+      $('#qMinus').onclick=()=>{const i=$('#qInput');i.value=Math.max(1,Number(i.value)-1);};
+      $('#qPlus').onclick=()=>{const i=$('#qInput');i.value=Math.min(stock,Number(i.value)+1);};
+      return;
+    }
+    const machinesWithBal=myBalsForProduct.filter(b=>Number(b.quantity)>0);
+    dyn.innerHTML=`
+      <div class="fg"><label class="fl">Hangi makineden? <span style="color:var(--bad)">*</span></label>
+        <select class="fs" id="macSel"><option value="">Seçin…</option>${machinesWithBal.map(b=>{
+          const m=S.machines.find(x=>x.id===b.machineId);
+          return `<option value="${b.machineId||''}">${esc(m?m.name:'(Makinesiz)')} — bakiye: ${b.quantity}</option>`;
+        }).join('')}</select></div>
+      <div class="fg"><label class="fl">Adet (maks. <span id="maxQtyLbl">0</span>)</label><div class="stepper"><button type="button" class="step-btn" id="qMinus">−</button><input class="fi" type="number" id="qInput" value="1" min="1" max="1"><button type="button" class="step-btn" id="qPlus">+</button></div></div>`;
+    $('#macSel').onchange=e=>{
+      const maxQ=machineBalQty(e.target.value)||1;
+      $('#maxQtyLbl').textContent=maxQ;$('#qInput').max=maxQ;$('#qInput').value=Math.min(Number($('#qInput').value)||1,maxQ);
+    };
+    $('#qMinus').onclick=()=>{const i=$('#qInput');i.value=Math.max(1,Number(i.value)-1);};
+    $('#qPlus').onclick=()=>{const i=$('#qInput');i.value=Math.min(Number(i.max)||1,Number(i.value)+1);};
+  }
+
+  sheet.querySelector('#cancelBtn').onclick=closeSheet;
+  sheet.querySelector('#confirmBtn').onclick=async()=>{
+    const errBox=$('#sErr');errBox.innerHTML='';
+    if(selType==='order'){
+      const qty=Number($('#qInput')?$('#qInput').value:1)||1;
+      const note=$('#orderNote')?$('#orderNote').value:'';
+      try{
+        showLoading('Sipariş talebi gönderiliyor…');
+        await api('createOrder',{productId:product.id,quantity:qty,note});
+        await loadAppData();hideLoading();closeSheet();showToast('Sipariş talebiniz iletildi.','good');
+      }catch(e){hideLoading();errBox.innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;}
+      return;
+    }
+    if(selType==='request'){
+      const qty=Number($('#reqQty').value)||1;
+      const machineId=$('#reqMac')?$('#reqMac').value:'';
+      try{
+        showLoading('Talep gönderiliyor…');
+        await api('requestAccess',{productId:product.id,quantity:qty,machineId});
+        await loadAppData();hideLoading();closeSheet();showToast('Yetki talebiniz iletildi.','good');
+      }catch(e){hideLoading();errBox.innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;}
+      return;
+    }
+    const qty=Number($('#qInput').value);
+    if(!qty||qty<=0){errBox.innerHTML=`<div class="alert bad">Geçerli adet girin.</div>`;return;}
+    const machineId=($('#macSel')||{}).value||'';
+    if(!machineId){errBox.innerHTML=`<div class="alert bad">Makine seçimi zorunlu.</div>`;return;}
+    $('#confirmBtn').disabled=true;$('#confirmBtn').textContent='İşleniyor…';
+    try{
+      await api('stockAction',{productId:product.id,type:selType,quantity:qty,machineId});
+      await loadAppData();closeSheet();showToast({cekim:'Çekim',iade:'İade',hurda:'Hurda'}[selType]+' başarılı.','good');
+      renderView(S.activeTab);
+    }catch(e){
+      errBox.innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;
+      $('#confirmBtn').disabled=false;$('#confirmBtn').textContent='Onayla';
+    }
+  };
+}
+
+/* ===== BALANCES ===== */
+function renderBalances(){
+  const wrap=$('#balList');wrap.innerHTML='';
+  if(!S.myBalances.length){wrap.appendChild(el('div','empty',`<div class="ico">${ICONS.receipt}</div><p>Üzerinizde kayıtlı stok yok.</p>`));return;}
+  S.myBalances.forEach(b=>{
+    const prod=S.products.find(p=>p.id===b.productId);if(!prod)return;
+    const mac=S.machines.find(m=>m.id===b.machineId);
+    const card=el('div','bal-card');
+    card.innerHTML=`<div class="prod-info"><div class="prod-name">${esc(prod.name)}</div><div class="prod-meta">${esc(getCatPath(prod.categoryId))}${mac?` · ${icon('wrench','ico-sm')} ${esc(mac.name)}`:''}</div></div><div class="bal-qty">${b.quantity}</div>`;
+    card.onclick=()=>openStockActionSheet(prod);
+    wrap.appendChild(card);
+  });
+}
+
+/* ===== SİPARİŞ ===== */
+function renderOrderForm(){
+  const wrap=$('#orderFormWrap');wrap.innerHTML='';
+  const f=el('div','panel-block');
+  f.innerHTML=`<div class="panel-block-title">Ürün ve Miktar Seç</div>
+    <div class="fg"><label class="fl">Ürün</label><select class="fs" id="orderProd"><option value="">Seçin…</option>${S.products.map(p=>`<option value="${p.id}">${esc(p.name)} (stok: ${p.stock})</option>`).join('')}</select></div>
+    <div class="fg"><label class="fl">Miktar</label><div class="stepper"><button type="button" class="step-btn" id="ordMinus">−</button><input class="fi" type="number" id="ordQty" value="1" min="1" style="text-align:center;font-family:var(--mono);font-weight:700"><button type="button" class="step-btn" id="ordPlus">+</button></div></div>
+    <div class="fg"><label class="fl">Not (isteğe bağlı)</label><input class="fi" id="ordNote" placeholder="Neden ihtiyaç var, hangi iş için?"></div>
+    <button class="btn-primary" id="ordSubmit">Sipariş Talebi Gönder</button>`;
+  wrap.appendChild(f);
+  f.querySelector('#ordMinus').onclick=()=>{const i=f.querySelector('#ordQty');i.value=Math.max(1,Number(i.value)-1);};
+  f.querySelector('#ordPlus').onclick=()=>{const i=f.querySelector('#ordQty');i.value=Number(i.value)+1;};
+  f.querySelector('#ordSubmit').onclick=async()=>{
+    const pid=f.querySelector('#orderProd').value;
+    const qty=Number(f.querySelector('#ordQty').value)||0;
+    const note=f.querySelector('#ordNote').value;
+    if(!pid){showToast('Ürün seçin.','bad');return;}
+    if(qty<=0){showToast('Geçerli miktar girin.','bad');return;}
+    showLoading('Gönderiliyor…');
+    try{await api('createOrder',{productId:pid,quantity:qty,note});await loadAppData();hideLoading();showToast('Sipariş talebiniz iletildi.','good');renderMyOrders();}
+    catch(e){hideLoading();showToast(e.message,'bad');}
+  };
+}
+
+function renderMyOrders(){
+  const wrap=$('#myOrderList');wrap.innerHTML='';
+  const list=S.myOrders||[];
+  if(!list.length){wrap.appendChild(el('div','empty',`<div class="ico">${ICONS.order}</div><p>Henüz sipariş talebiniz yok.</p>`));return;}
+  list.forEach(o=>{
+    const prod=S.products.find(p=>p.id===o.productId);
+    const card=el('div','req-card order '+(o.status||''));
+    const statusLabel={pending:'Bekliyor',fulfilled:'Karşılandı',rejected:'Reddedildi'}[o.status]||o.status;
+    card.innerHTML=`<div class="req-title">${icon('order','ico-sm')} ${esc(prod?prod.name:o.productId)} <span class="req-status ${o.status||'pending'}">${statusLabel}</span></div>
+      <div class="req-meta">${o.quantity} adet · ${fmtDate(o.timestamp)}${o.note?' · '+esc(o.note):''}</div>
+      ${o.adminNote?`<div class="req-meta" style="margin-top:4px;color:var(--text-1)">Not: ${esc(o.adminNote)}</div>`:''}`;
+    wrap.appendChild(card);
+  });
+}
+
+/* ===== TALEPLER (admin/yetkili) ===== */
+function renderTalepler(){
+  const wrap=$('#taleplerContent');wrap.innerHTML='';
+  const isAdmin=S.user.role==='admin';
+
+  // Şifre sıfırlama talepleri
+  if(isAdmin && S.pinResetRequests&&S.pinResetRequests.length){
+    const t=el('div','sec-title','Şifre Sıfırlama Talepleri');
+    t.style.marginTop='2px'; wrap.appendChild(t);
+    S.pinResetRequests.forEach(r=>{
+      const matchedUser=S.allUsers.find(u=>u.quickId===r.quickId);
+      const card=el('div','req-card');
+      card.innerHTML=`<div class="req-title">🔑 PIN Sıfırlama İsteği</div>
+        <div class="req-meta">Kullanıcı ID: <b>${esc(r.quickId)}</b>${matchedUser?` (${esc(matchedUser.displayName||matchedUser.name||matchedUser.email)})`:' — eşleşen kullanıcı bulunamadı'}<br>
+        ${fmtDate(r.timestamp)}</div>
+        <div class="req-actions">
+          ${matchedUser?`<button class="btn-sm ok" data-act="open">Kullanıcıyı Aç ve PIN Ver</button>`:''}
+          <button class="btn-sm" data-act="dismiss">Kapat</button>
+        </div>`;
+      const openBtn=card.querySelector('[data-act="open"]');
+      if(openBtn) openBtn.onclick=async()=>{
+        showLoading(); try{await api('adminResolvePinReset',{requestId:r.id});await loadAppData();hideLoading();openUserEditSheet(matchedUser);}catch(e){hideLoading();showToast(e.message,'bad');}
+      };
+      card.querySelector('[data-act="dismiss"]').onclick=async()=>{
+        showLoading(); try{await api('adminResolvePinReset',{requestId:r.id});await loadAppData();hideLoading();renderTalepler();showToast('Kapatıldı.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+      };
+      wrap.appendChild(card);
+    });
+  }
+
+  // Bekleyen hurda bildirimleri
+  if(isAdmin && S.pendingScrap&&S.pendingScrap.length){
+    const t=el('div','sec-title','Bekleyen Hurda Bildirimleri');
+    t.style.marginTop='2px'; wrap.appendChild(t);
+    S.pendingScrap.forEach(s=>{
+      const prod=S.products.find(p=>p.id===s.productId);
+      const mac=S.machines.find(m=>m.id===s.machineId);
+      const user=S.allUsers.find(u=>u.email===s.oldUserEmail);
+      const triggerUser=S.allUsers.find(u=>u.email===s.triggerEmail);
+      const card=el('div','req-card scrap-pending');
+      card.innerHTML=`<div class="req-title">⚠️ Otomatik Hurda Bildirimi</div>
+        <div class="req-meta">${esc(prod?prod.name:s.productId)} · ${icon('wrench','ico-sm')} ${esc(mac?mac.name:s.machineId)}<br>
+        Eski sahip: ${esc(user?user.displayName||user.name:s.oldUserEmail)} (${s.oldQuantity} adet)<br>
+        Tetikleyen: ${esc(triggerUser?triggerUser.displayName||triggerUser.name:s.triggerEmail)} · ${fmtDate(s.timestamp)}</div>
+        <div class="req-actions">
+          <button class="btn-sm ok" data-sid="${s.id}" data-act="approve">Onayla → Hurda</button>
+          <button class="btn-sm bad" data-sid="${s.id}" data-act="reject">Reddet</button>
+        </div>`;
+      card.querySelectorAll('[data-act]').forEach(btn=>{
+        btn.onclick=async()=>{
+          showLoading();
+          try{await api('adminHandlePendingScrap',{scrapId:btn.dataset.sid,approved:btn.dataset.act==='approve'});await loadAppData();hideLoading();renderTalepler();showToast(btn.dataset.act==='approve'?'Hurdaya düşürüldü.':'Reddedildi.','good');}
+          catch(e){hideLoading();showToast(e.message,'bad');}
+        };
+      });
+      wrap.appendChild(card);
+    });
+  }
+
+  // Yetki talepleri
+  if(isAdmin && S.pendingRequests&&S.pendingRequests.length){
+    const t=el('div','sec-title','Yetki Talepleri');wrap.appendChild(t);
+    S.pendingRequests.forEach(r=>{
+      const prod=S.products.find(p=>p.id===r.productId);
+      const user=S.allUsers.find(u=>u.email===r.userEmail);
+      const card=el('div','req-card');
+      card.innerHTML=`<div class="req-title">${icon('request','ico-sm')} Yetki Talebi</div>
+        <div class="req-meta">${esc(user?user.displayName||user.name:r.userEmail)} · ${esc(prod?prod.name:r.productId)} · ${r.quantity} adet · ${fmtDate(r.timestamp)}</div>
+        <div class="req-actions">
+          <button class="btn-sm ok" data-rid="${r.id}" data-act="approve">Onayla & Aktar</button>
+          <button class="btn-sm bad" data-rid="${r.id}" data-act="reject">Reddet</button>
+        </div>`;
+      card.querySelectorAll('[data-act]').forEach(btn=>{
+        btn.onclick=async()=>{
+          showLoading();
+          try{await api('adminHandleRequest',{requestId:btn.dataset.rid,approved:btn.dataset.act==='approve'});await loadAppData();hideLoading();renderTalepler();showToast('İşlendi.','good');}
+          catch(e){hideLoading();showToast(e.message,'bad');}
+        };
+      });
+      wrap.appendChild(card);
+    });
+  }
+
+  // Sipariş talepleri
+  const orderTitle=el('div','sec-title','Sipariş Talepleri');orderTitle.style.marginTop='2px';wrap.appendChild(orderTitle);
+  const orders=S.orders||[];
+  if(!orders.length){wrap.appendChild(el('div','empty',`<div class="ico">${ICONS.order}</div><p>Sipariş talebi yok.</p>`));return;}
+
+  // Filtre: bekleyen / tümü
+  const filterRow=el('div','chip-row');
+  ['Tümü','Bekleyen','Karşılanan','Reddedilen'].forEach((lbl,i)=>{
+    const chip=el('div','chip'+(i===0?' active':''),lbl);
+    chip.onclick=()=>{
+      filterRow.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+      chip.classList.add('active');
+      renderOrderCards(i===0?null:['pending','fulfilled','rejected'][i-1]);
+    };
+    filterRow.appendChild(chip);
+  });
+  wrap.appendChild(filterRow);
+  const orderListWrap=el('div');orderListWrap.id='orderCardsWrap';wrap.appendChild(orderListWrap);
+  renderOrderCards(null);
+
+  function renderOrderCards(filterStatus){
+    const w=$('#orderCardsWrap');w.innerHTML='';
+    const filtered=filterStatus?orders.filter(o=>o.status===filterStatus):orders;
+    if(!filtered.length){w.appendChild(el('div','empty','<p>Bu filtrede talep yok.</p>'));return;}
+    filtered.forEach(o=>{
+      const prod=S.products.find(p=>p.id===o.productId);
+      const user=S.allUsers?S.allUsers.find(u=>u.email===o.userEmail):null;
+      const card=el('div','req-card order '+(o.status||'pending'));
+      const statusLabel={pending:'Bekliyor',fulfilled:'Karşılandı',rejected:'Reddedildi'}[o.status]||o.status;
+      card.innerHTML=`<div class="req-title">${icon('order','ico-sm')} ${esc(prod?prod.name:o.productId)} · ${o.quantity} adet <span class="req-status ${o.status||'pending'}">${statusLabel}</span></div>
+        <div class="req-meta">${esc(user?user.displayName||user.name:o.userEmail)} · ${fmtDate(o.timestamp)}${o.note?' · '+esc(o.note):''}</div>
+        ${o.adminNote?`<div class="req-meta" style="margin-top:4px;color:var(--text-1)">Not: ${esc(o.adminNote)}</div>`:''}
+        ${isAdmin&&o.status==='pending'?`<div class="req-actions">
+          <button class="btn-sm ok" data-oid="${o.id}" data-act="approve">Karşılandı</button>
+          <button class="btn-sm bad" data-oid="${o.id}" data-act="reject">Reddet</button>
+        </div>`:''}`;
+      if(isAdmin&&o.status==='pending'){
+        card.querySelectorAll('[data-act]').forEach(btn=>{
+          btn.onclick=async()=>{
+            const note=btn.dataset.act==='reject'?prompt('Red nedeni (isteğe bağlı)',''):'';
+            if(note===null)return;
+            showLoading();
+            try{await api('adminHandleOrder',{orderId:btn.dataset.oid,approved:btn.dataset.act==='approve',note});await loadAppData();hideLoading();renderTalepler();showToast('İşlendi.','good');}
+            catch(e){hideLoading();showToast(e.message,'bad');}
+          };
+        });
+      }
+      w.appendChild(card);
+    });
+  }
+}
+
+/* ===== STOK UYARILARI ===== */
+function renderAlerts(){
+  const wrap=$('#alertList');wrap.innerHTML='';
+  if(!S.alerts.length){wrap.appendChild(el('div','empty',`<div class="ico">${ICONS.bell}</div><p>Stok seviyesi normal, uyarı yok.</p>`));return;}
+  S.alerts.forEach(p=>{
+    const th=Number(p.alertThreshold)||0;
+    const stock=Number(p.stock)||0;
+    const card=el('div','prod-card low');
+    const barPct=Math.max(2,Math.min(100,Math.round((stock/Math.max(th*2,1))*100)));
+    card.innerHTML=`
+      <div class="gauge">
+        <div class="gauge-num low">${stock}</div>
+        <div class="gauge-unit">${esc(p.unit||'adet')}</div>
+        <div class="gauge-bar"><i style="width:${barPct}%;background:var(--bad)"></i></div>
+      </div>
+      <div class="prod-info">
+        <div class="prod-name">${esc(p.name)}</div>
+        <div class="prod-meta">${esc(getCatPath(p.categoryId))} <span class="alert-badge">Uyarı Eşiği: ${th}</span></div>
+      </div>`;
+    card.onclick=()=>openStockActionSheet(p);
+    wrap.appendChild(card);
+  });
+}
+
+/* ===== ADMIN: USER FORM ===== */
+function renderAddUserForm(){
+  const wrap=$('#addUserForm');
+  wrap.innerHTML=`
+    <div style="display:grid;gap:10px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fg" style="margin:0"><label class="fl">Email</label><input class="fi fi-sm" id="nuEmail" placeholder="kullanici@gmail.com"></div>
+        <div class="fg" style="margin:0"><label class="fl">Görünen Ad</label><input class="fi fi-sm" id="nuName" placeholder="Ad Soyad"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fg" style="margin:0"><label class="fl">Hızlı Giriş ID</label><input class="fi fi-sm" id="nuQid" placeholder="Örn: MERT01"></div>
+        <div class="fg" style="margin:0"><label class="fl">PIN</label><input class="fi fi-sm" id="nuQpin" type="password" placeholder="4-8 karakter"></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <select class="fs" id="nuGroup" style="flex:1"><option value="">Grup seçin…</option>${S.groups.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select>
+        <button class="btn-sm blue" id="addUserBtn" style="padding:10px 16px;">Ekle</button>
+      </div>
+    </div>`;
+  wrap.querySelector('#addUserBtn').onclick=async()=>{
+    const email=wrap.querySelector('#nuEmail').value.trim();
+    const displayName=wrap.querySelector('#nuName').value.trim();
+    const quickId=wrap.querySelector('#nuQid').value.trim();
+    const quickPin=wrap.querySelector('#nuQpin').value.trim();
+    const groupId=wrap.querySelector('#nuGroup').value;
+    if(!email){showToast('Email zorunlu.','bad');return;}
+    showLoading('Kaydediliyor…');
+    try{
+      await api('adminSaveUser',{targetEmail:email,displayName,quickId,quickPin,groupId,role:'operator',status:'approved'});
+      await loadAppData();hideLoading();showToast('Kullanıcı eklendi.','good');renderUserList();
+      wrap.querySelector('#nuEmail').value='';wrap.querySelector('#nuName').value='';wrap.querySelector('#nuQid').value='';wrap.querySelector('#nuQpin').value='';
+    }catch(e){hideLoading();showToast(e.message,'bad');}
+  };
+}
+
+/* ===== ADMIN: USER LIST ===== */
+function renderUserList(){
+  const wrap=$('#userList');wrap.innerHTML='';
+  if(!S.allUsers.length){wrap.appendChild(el('div','empty','<p>Kullanıcı yok.</p>'));return;}
+  S.allUsers.forEach(u=>{
+    const grp=S.groups.find(g=>g.id===u.groupId);
+    const statusCls={approved:'pill-ok',pending:'pill-warn',rejected:'pill-bad'}[u.status]||'pill-warn';
+    const isPending=u.status!=='approved';
+    const row=el('div','adm-row');
+    row.innerHTML=`
+      <div class="adm-main">
+        <div class="adm-title">${esc(u.displayName||u.name||u.email)} <span class="pill ${statusCls}">${u.status}</span></div>
+        <div class="adm-sub">${esc(u.email)}${u.quickId?' · ID: '+esc(u.quickId):''} · ${grp?esc(grp.name):u.role}${u.role==='admin'?' (Admin)':''}</div>
+      </div>
+      <div class="adm-acts">
+        ${isPending?'<button class="btn-sm ok" data-act="approve">Onayla</button>':''}
+        <button class="btn-sm" data-act="edit">Düzenle</button>
+        <button class="btn-sm" data-act="bal">Bakiye</button>
+        <button class="btn-sm bad" data-act="del">Sil</button>
+      </div>`;
+    if(isPending) row.querySelector('[data-act="approve"]').onclick=async()=>{
+      showLoading();try{await api('adminSaveUser',{id:u.email,targetEmail:u.email,status:'approved'});await loadAppData();hideLoading();renderUserList();showToast('Kullanıcı onaylandı.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+    };
+    row.querySelector('[data-act="edit"]').onclick=()=>openUserEditSheet(u);
+    row.querySelector('[data-act="bal"]').onclick=()=>openBalanceEditor(u.email);
+    row.querySelector('[data-act="del"]').onclick=async()=>{
+      if(u.email===S.user.email){showToast('Kendinizi silemezsiniz.','bad');return;}
+      if(!confirm('Bu kullanıcıyı silmek istediğinizden emin misiniz?'))return;
+      showLoading();try{await api('adminDeleteUser',{targetEmail:u.email});await loadAppData();hideLoading();renderUserList();showToast('Silindi.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+    };
+    wrap.appendChild(row);
+  });
+}
+
+function openUserEditSheet(u){
+  const grpOptions=S.groups.map(g=>`<option value="${g.id}" ${u.groupId===g.id?'selected':''}>${esc(g.name)}</option>`).join('');
+  const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
+  sheet.innerHTML=`<div class="sheet-handle"></div>
+    <h2>Kullanıcı Düzenle</h2><div class="sub">${esc(u.email)}</div>
+    <div id="ueErr"></div>
+    <div class="fg"><label class="fl">Görünen Ad</label><input class="fi" id="ueName" value="${esc(u.displayName||u.name||'')}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="fg"><label class="fl">Hızlı Giriş ID</label><input class="fi" id="ueQid" value="${esc(u.quickId||'')}" placeholder="Örn: MERT01"></div>
+      <div class="fg"><label class="fl">PIN (değiştir)</label><input class="fi" type="password" id="ueQpin" placeholder="Boş=değiştirme"></div>
+    </div>
+    <div class="fg"><label class="fl">Grup</label><select class="fs" id="ueGroup"><option value="">Grup seçin…</option>${grpOptions}</select></div>
+    <div class="fg"><label class="fl">Rol</label><select class="fs" id="ueRole"><option value="operator" ${u.role!=='admin'?'selected':''}>Operatör</option><option value="admin" ${u.role==='admin'?'selected':''}>Admin</option></select></div>
+    <button class="btn-primary" id="ueSave">Kaydet</button>
+    <button class="btn-secondary" id="ueCancel">Vazgeç</button>`;
+  overlay.appendChild(sheet);$('#modalRoot').appendChild(overlay);
+  sheet.querySelector('#ueCancel').onclick=closeSheet;
+  sheet.querySelector('#ueSave').onclick=async()=>{
+    const pin=sheet.querySelector('#ueQpin').value.trim();
+    const payload={id:u.email,targetEmail:u.email,displayName:sheet.querySelector('#ueName').value.trim(),quickId:sheet.querySelector('#ueQid').value.trim(),groupId:sheet.querySelector('#ueGroup').value,role:sheet.querySelector('#ueRole').value};
+    if(pin) payload.quickPin=pin;
+    showLoading();
+    try{await api('adminSaveUser',payload);await loadAppData();closeSheet();hideLoading();renderUserList();showToast('Güncellendi.','good');}
+    catch(e){hideLoading();sheet.querySelector('#ueErr').innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;}
+  };
+}
+
+/* ===== ADMIN: BALANCE EDITOR ===== */
+function openBalanceEditor(targetEmail){
+  const userBals=S.allBalances.filter(b=>b.userEmail===targetEmail&&Number(b.quantity)>0);
+  const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
+  function macName(mid){const m=S.machines.find(x=>x.id===mid);return m?m.name:'(Makinesiz)';}
+  const balRows=userBals.map(b=>{
+    const prod=S.products.find(p=>p.id===b.productId);
+    const mid=b.machineId||'';
+    return `<div class="adm-row" style="flex-wrap:wrap">
+      <div class="adm-main"><div class="adm-title">${esc(prod?prod.name:b.productId)}</div>
+      <div class="adm-sub">${icon('wrench','ico-sm')} ${esc(macName(mid))} · Bakiye: ${b.quantity}</div></div>
+      <div class="adm-acts">
+        <input class="fi fi-sm" style="width:64px;text-align:center" type="number" min="0" value="${b.quantity}" data-pid="${b.productId}" data-mid="${esc(mid)}">
+        <button class="btn-sm ok" data-save="${b.productId}" data-savemid="${esc(mid)}">Kaydet</button>
+        <button class="btn-sm warn" data-scrap="${b.productId}" data-scrapmid="${esc(mid)}">Hurdaya</button>
+      </div></div>`;
+  }).join('');
+  sheet.innerHTML=`<div class="sheet-handle"></div>
+    <h2>Bakiye Düzenle</h2><div class="sub">${esc(targetEmail)}</div>
+    <div id="balEdRows">${balRows||'<div class="empty" style="padding:18px"><p>Üzerinde bakiye yok.</p></div>'}</div>
+    <div class="sec-title" style="margin-top:14px">Ürün Ekle / Güncelle</div>
+    <div class="fg"><select class="fs" id="beProd"><option value="">Ürün seçin…</option>${S.products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+    <div class="fg"><select class="fs" id="beMac"><option value="">Makine (opsiyonel)…</option>${S.machines.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></div>
+    <div class="fg"><input class="fi" type="number" id="beQty" placeholder="Miktar" min="0"></div>
+    <button class="btn-primary" id="beAdd">Güncelle / Ekle</button>
+    <button class="btn-secondary" id="beClose">Kapat</button>`;
+  overlay.appendChild(sheet);$('#modalRoot').appendChild(overlay);
+  const refresh=()=>{closeSheet();openBalanceEditor(targetEmail);};
+  sheet.querySelectorAll('[data-save]').forEach(btn=>{
+    btn.onclick=async()=>{
+      const pid=btn.dataset.save;const mid=btn.dataset.savemid||'';
+      const inp=sheet.querySelector(`[data-pid="${pid}"][data-mid="${mid}"]`);
+      showLoading();try{await api('adminAdjustBalance',{targetEmail,productId:pid,machineId:mid,newQuantity:inp.value});await loadAppData();hideLoading();showToast('Güncellendi.','good');refresh();}catch(e){hideLoading();showToast(e.message,'bad');}
+    };
+  });
+  sheet.querySelectorAll('[data-scrap]').forEach(btn=>{
+    btn.onclick=async()=>{
+      const pid=btn.dataset.scrap;const mid=btn.dataset.scrapmid||'';
+      const inp=sheet.querySelector(`[data-pid="${pid}"][data-mid="${mid}"]`);
+      const qty=prompt('Hurdaya düşürülecek miktar:',inp?inp.value:'1');
+      if(qty===null)return;
+      showLoading();try{await api('adminScrapFromBalance',{targetEmail,productId:pid,machineId:mid,quantity:qty});await loadAppData();hideLoading();showToast('Hurdaya düşürüldü.','good');refresh();}catch(e){hideLoading();showToast(e.message,'bad');}
+    };
+  });
+  sheet.querySelector('#beAdd').onclick=async()=>{
+    const pid=sheet.querySelector('#beProd').value;const qty=sheet.querySelector('#beQty').value;const mid=sheet.querySelector('#beMac').value||'';
+    if(!pid||qty===''){showToast('Ürün ve miktar girin.','bad');return;}
+    showLoading();try{await api('adminAdjustBalance',{targetEmail,productId:pid,machineId:mid,newQuantity:qty});await loadAppData();hideLoading();closeSheet();showToast('Güncellendi.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+  };
+  sheet.querySelector('#beClose').onclick=closeSheet;
+}
+
+/* ===== ADMIN: GRUPLAR ===== */
+function renderGroupList(){
+  const wrap=$('#groupList');wrap.innerHTML='';
+  if(!S.groups.length){wrap.appendChild(el('div','empty','<p>Grup yok. + ile ekleyin.</p>'));return;}
+  S.groups.forEach(g=>{
+    let perms=toArr(g.permissions);
+    const row=el('div','adm-row');
+    row.innerHTML=`<div class="adm-main">
+      <div class="adm-title">${esc(g.name)}</div>
+      <div class="adm-sub">${perms.length} yetki atanmış</div></div>
+      <div class="adm-acts">
+        <button class="btn-sm" data-act="edit">Düzenle</button>
+        <button class="btn-sm bad" data-act="del">Sil</button>
+      </div>`;
+    row.querySelector('[data-act="edit"]').onclick=()=>openGroupSheet(g);
+    row.querySelector('[data-act="del"]').onclick=async()=>{
+      if(!confirm('Grubu silmek istediğinizden emin misiniz?'))return;
+      showLoading();try{await api('adminDeleteGroup',{id:g.id});await loadAppData();hideLoading();renderGroupList();showToast('Silindi.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+    };
+    wrap.appendChild(row);
+  });
+}
+
+function openGroupSheet(group=null){
+  const isEdit=!!group;
+  let curPerms=toArr(group?.permissions);
+  const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
+  sheet.innerHTML=`<div class="sheet-handle"></div>
+    <h2>${isEdit?'Grubu Düzenle':'Yeni Grup'}</h2>
+    <div id="gErr"></div>
+    <div class="fg"><label class="fl">Grup Adı</label><input class="fi" id="gName" value="${esc(group?.name||'')}" placeholder="Örn: Vardiya Amiri"></div>
+    <div class="sec-title" style="margin-top:14px">Yetkiler</div>
+    <div class="perm-grid" id="permGrid">${ALL_PERMS.map(p=>`
+      <div class="check-row">
+        <input type="checkbox" id="perm_${p.id}" value="${p.id}" ${curPerms.includes(p.id)?'checked':''}>
+        <label for="perm_${p.id}">${p.label}</label>
+      </div>`).join('')}</div>
+    <button class="btn-primary" style="margin-top:14px" id="saveGrpBtn">${isEdit?'Güncelle':'Oluştur'}</button>
+    <button class="btn-secondary" id="cancelGrpBtn">Vazgeç</button>`;
+  overlay.appendChild(sheet);$('#modalRoot').appendChild(overlay);
+  sheet.querySelector('#cancelGrpBtn').onclick=closeSheet;
+  sheet.querySelector('#saveGrpBtn').onclick=async()=>{
+    const name=sheet.querySelector('#gName').value.trim();
+    if(!name){sheet.querySelector('#gErr').innerHTML='<div class="alert bad">Ad zorunlu.</div>';return;}
+    const permissions=Array.from(sheet.querySelectorAll('#permGrid input:checked')).map(c=>c.value);
+    showLoading();try{
+      await api('adminSaveGroup',{id:group?.id||null,name,permissions});
+      await loadAppData();closeSheet();hideLoading();renderGroupList();showToast('Kaydedildi.','good');
+    }catch(e){hideLoading();sheet.querySelector('#gErr').innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;}
+  };
+}
+
+/* ===== ADMIN: PRODUCTS ===== */
+function renderAdminProducts(){
+  const wrap=$('#adminProdList');wrap.innerHTML='';
+  if(!S.products.length){wrap.appendChild(el('div','empty','<p>Henüz ürün yok. + ile ekleyin.</p>'));return;}
+  S.products.forEach(p=>{
+    const th=Number(p.alertThreshold)||0;
+    const row=el('div','adm-row');
+    row.innerHTML=`<div class="adm-main">
+      <div class="adm-title">${esc(p.name)}${p.brand?` <span style="color:var(--text-2);font-weight:400">· ${esc(p.brand)}</span>`:''}</div>
+      <div class="adm-sub">${esc(getCatPath(p.categoryId))} · Stok: ${p.stock} ${p.unit||''}${th>0?' · <span style="color:var(--bad)">⚠ ≤'+th+'</span>':''}</div></div>
+      <div class="adm-acts">
+        <button class="btn-sm" data-act="edit">Düzenle</button>
+        <button class="btn-sm bad" data-act="del">Sil</button>
+      </div>`;
+    row.querySelector('[data-act="edit"]').onclick=()=>openProductSheet(p);
+    row.querySelector('[data-act="del"]').onclick=async()=>{
+      if(!confirm('Silmek istediğinizden emin misiniz?'))return;
+      showLoading();try{await api('adminDeleteProduct',{id:p.id});await loadAppData();hideLoading();renderAdminProducts();showToast('Silindi.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+    };
+    wrap.appendChild(row);
+  });
+}
+
+function openProductSheet(product=null){
+  const isEdit=!!product;
+  let customData={};
+  try{customData=typeof product?.customData==='string'?JSON.parse(product.customData||'{}'):(product?.customData||{});}catch(e){}
+  let templateFieldIds=S.fieldTemplate?S.fieldTemplate.split(',').filter(Boolean):[];
+  const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
+  const matOptions=['Paslanmaz','Çelik','Alüminyum','Süper Alaşım','ST52','Titanyum','Bakır','Pirinç','Plastik','Seramik'];
+  const curMats=(product?.materials||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const curAuth=(product?.authorizedUsers||'').split(',').map(s=>s.trim()).filter(Boolean);
+  sheet.innerHTML=`<div class="sheet-handle"></div>
+    <h2>${isEdit?'Ürünü Düzenle':'Yeni Ürün'}</h2>
+    <div id="pErr"></div>
+    <div class="fg"><label class="fl">Ürün Adı *</label><input class="fi" id="pName" value="${esc(product?.name||'')}"></div>
+    <div class="fg"><label class="fl">Marka</label><input class="fi" id="pBrand" value="${esc(product?.brand||'')}"></div>
+    <div class="fg"><label class="fl">Kategori</label><select class="fs" id="pCat"><option value="">Seçin…</option>${buildCatOptions(product?.categoryId)}</select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fg"><label class="fl">Stok</label><input class="fi" type="number" id="pStock" value="${product?.stock||0}"></div>
+      <div class="fg"><label class="fl">Birim</label><input class="fi" id="pUnit" value="${esc(product?.unit||'adet')}"></div>
+    </div>
+    <div class="fg"><label class="fl">İş Parçası Numaraları <span style="color:var(--text-2)">(virgülle)</span></label><input class="fi" id="pParts" value="${esc(product?.partNumbers||'')}"></div>
+    <div class="fg"><label class="fl">Malzemeler</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0">${matOptions.map(m=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" value="${m}" ${curMats.includes(m)?'checked':''}> ${m}</label>`).join('')}</div>
+    </div>
+    <div class="fg"><label class="fl">Yetkili Operatörler</label>
+      <select class="fs" id="pAuth" multiple style="height:80px">${S.allUsers.filter(u=>u.role!=='admin').map(u=>`<option value="${esc(u.email)}" ${curAuth.includes(u.email)?'selected':''}>${esc(u.displayName||u.name||u.email)}</option>`).join('')}</select>
+      <div style="font-size:11px;color:var(--text-2);margin-top:4px">Boş = tüm operatörler çekebilir.</div>
+    </div>
+    <div class="fg">
+      <label class="fl">Stok Uyarı Eşiği <span style="color:var(--text-2)">(0 = uyarı yok)</span></label>
+      <input class="fi" type="number" id="pAlert" value="${product?.alertThreshold||0}" min="0">
+    </div>
+    <div class="sec-title">Özel Alanlar</div>
+    <div id="customFieldRows"></div>
+    <button class="btn-sm blue" id="addFieldBtn" style="width:100%;margin-bottom:12px">+ Alan Ekle</button>
+    <button class="btn-primary" id="saveProdBtn">${isEdit?'Güncelle':'Ürünü Ekle'}</button>
+    <button class="btn-secondary" id="cancelProdBtn">Vazgeç</button>`;
+  overlay.appendChild(sheet);$('#modalRoot').appendChild(overlay);
+
+  function renderCustomFieldRows(){
+    const wrap=sheet.querySelector('#customFieldRows');wrap.innerHTML='';
+    templateFieldIds.forEach(fid=>{
+      const field=S.fields.find(f=>f.id===fid);if(!field)return;
+      const val=customData[fid]||'';
+      const row=el('div','field-row');
+      if(field.type==='multiselect'){
+        const opts=(field.options||'').split(',').map(s=>s.trim()).filter(Boolean);
+        const selVals=(val||'').split(',').map(s=>s.trim()).filter(Boolean);
+        row.innerHTML=`<div style="flex:1"><label class="fl">${esc(field.name)}</label><select class="fs" multiple style="height:75px" data-fid="${fid}">${opts.map(o=>`<option value="${esc(o)}" ${selVals.includes(o)?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
+      } else {
+        row.innerHTML=`<div style="flex:1"><label class="fl">${esc(field.name)}</label><input class="fi" data-fid="${fid}" value="${esc(val)}"></div>`;
+      }
+      const rmBtn=el('button','field-rm','✕');rmBtn.title='Kaldır';
+      rmBtn.onclick=()=>{templateFieldIds=templateFieldIds.filter(id=>id!==fid);renderCustomFieldRows();saveFieldTemplate();};
+      row.appendChild(rmBtn);wrap.appendChild(row);
+    });
+  }
+  renderCustomFieldRows();
+  async function saveFieldTemplate(){S.fieldTemplate=templateFieldIds.join(',');try{await api('adminSetFieldTemplate',{template:S.fieldTemplate});}catch(e){}}
+
+  sheet.querySelector('#addFieldBtn').onclick=()=>{
+    const unused=S.fields.filter(f=>!templateFieldIds.includes(f.id));
+    const pick=el('div','sheet-overlay');const ps=el('div','sheet');
+    ps.innerHTML=`<div class="sheet-handle"></div><h2>Alan Ekle</h2>
+      <div class="sub">Mevcut bir alanı seçin veya yeni oluşturun.</div>
+      ${unused.length?`<div class="sec-title" style="margin-top:0">Mevcut Alanlar</div><div style="margin-bottom:16px">${unused.map(f=>`<div class="adm-row" style="cursor:pointer" data-fid="${f.id}"><div class="adm-main"><div class="adm-title">${esc(f.name)}</div><div class="adm-sub">${f.type}${f.options?' · '+esc(f.options):''}</div></div></div>`).join('')}</div>`:''}
+      <div class="sec-title" style="margin-top:0">Yeni Alan Oluştur</div>
+      <div id="nfErr"></div>
+      <div class="fg"><label class="fl">Alan Adı</label><input class="fi" id="nfName" placeholder="Örn: Sertlik, Çap…"></div>
+      <div class="fg"><label class="fl">Tip</label><select class="fs" id="nfType"><option value="text">Metin</option><option value="number">Sayı</option><option value="multiselect">Çoklu Seçim</option></select></div>
+      <div class="fg" id="nfOptWrap" style="display:none"><label class="fl">Seçenekler (virgülle)</label><input class="fi" id="nfOpts"></div>
+      <button class="btn-primary" id="nfCreate">Oluştur ve Ekle</button>
+      <button class="btn-secondary" id="pickCancel">İptal</button>`;
+    pick.appendChild(ps);document.body.appendChild(pick);
+    ps.querySelector('#nfType').onchange=e=>{ps.querySelector('#nfOptWrap').style.display=e.target.value==='multiselect'?'':'none';};
+    ps.querySelectorAll('[data-fid]').forEach(r=>{r.onclick=()=>{templateFieldIds.push(r.dataset.fid);pick.remove();renderCustomFieldRows();saveFieldTemplate();};});
+    ps.querySelector('#pickCancel').onclick=()=>pick.remove();
+    ps.querySelector('#nfCreate').onclick=async()=>{
+      const name=ps.querySelector('#nfName').value.trim();
+      if(!name){ps.querySelector('#nfErr').innerHTML='<div class="alert bad">Alan adı zorunlu.</div>';return;}
+      const btn=ps.querySelector('#nfCreate');btn.disabled=true;btn.textContent='Oluşturuluyor…';
+      try{
+        await api('adminSaveField',{name,type:ps.querySelector('#nfType').value,options:ps.querySelector('#nfOpts').value.trim()});
+        await loadAppData();
+        const created=S.fields.find(f=>f.name===name&&!templateFieldIds.includes(f.id));
+        if(created)templateFieldIds.push(created.id);
+        pick.remove();renderCustomFieldRows();saveFieldTemplate();
+      }catch(e){btn.disabled=false;btn.textContent='Oluştur ve Ekle';ps.querySelector('#nfErr').innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;}
+    };
+  };
+
+  sheet.querySelector('#cancelProdBtn').onclick=closeSheet;
+  sheet.querySelector('#saveProdBtn').onclick=async()=>{
+    const name=sheet.querySelector('#pName').value.trim();
+    if(!name){sheet.querySelector('#pErr').innerHTML='<div class="alert bad">Ürün adı zorunlu.</div>';return;}
+    const cd={};
+    sheet.querySelectorAll('[data-fid]').forEach(inp=>{
+      if(inp.tagName==='SELECT') cd[inp.dataset.fid]=Array.from(inp.selectedOptions).map(o=>o.value).join(',');
+      else cd[inp.dataset.fid]=inp.value;
+    });
+    const mats=Array.from(sheet.querySelectorAll('input[type=checkbox]:checked')).map(c=>c.value).join(',');
+    const authSel=sheet.querySelector('#pAuth');
+    const authUsers=authSel?Array.from(authSel.selectedOptions).map(o=>o.value).join(','):'';
+    showLoading('Kaydediliyor…');
+    try{
+      await api('adminSaveProduct',{
+        id:isEdit?product.id:null,name,brand:sheet.querySelector('#pBrand').value.trim(),
+        categoryId:sheet.querySelector('#pCat').value,stock:sheet.querySelector('#pStock').value,
+        unit:sheet.querySelector('#pUnit').value.trim(),partNumbers:sheet.querySelector('#pParts').value.trim(),
+        materials:mats,authorizedUsers:authUsers,customData:JSON.stringify(cd),
+        alertThreshold:sheet.querySelector('#pAlert').value
+      });
+      await loadAppData();closeSheet();hideLoading();renderAdminProducts();showToast('Ürün kaydedildi.','good');
+    }catch(e){hideLoading();sheet.querySelector('#pErr').innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;}
+  };
+}
+
+function buildCatOptions(selectedId,parentId='',depth=0){
+  return S.categories.filter(c=>(c.parentId||'')===(parentId||'')).map(c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${'—'.repeat(depth)} ${esc(c.name)}</option>${buildCatOptions(selectedId,c.id,depth+1)}`).join('');
+}
+
+/* ===== ADMIN: CATS ===== */
+function renderCatTree(){
+  const wrap=$('#catTree');wrap.innerHTML='';
+  function renderNode(cat){
+    const node=el('div','cat-node');const row=el('div','cat-row');
+    row.innerHTML=`<span style="font-size:13px;font-weight:600;flex:1">${esc(cat.name)}</span>`;
+    const acts=el('div','adm-acts');
+    const addSub=el('button','btn-sm blue','+ Alt');addSub.onclick=e=>{e.stopPropagation();openCatSheet(null,cat.id);};
+    const editBtn=el('button','btn-sm','Düzenle');editBtn.onclick=e=>{e.stopPropagation();openCatSheet(cat);};
+    const delBtn=el('button','btn-sm bad','Sil');delBtn.onclick=async e=>{
+      e.stopPropagation();if(!confirm('Silmek istediğinizden emin misiniz?'))return;
+      showLoading();try{await api('adminDeleteCategory',{id:cat.id});await loadAppData();hideLoading();renderCatTree();showToast('Silindi.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+    };
+    acts.append(addSub,editBtn,delBtn);row.appendChild(acts);node.appendChild(row);
+    const children=getChildCats(cat.id);
+    if(children.length){const cw=el('div','cat-children');children.forEach(ch=>cw.appendChild(renderNode(ch)));node.appendChild(cw);}
+    return node;
+  }
+  getRootCats().forEach(c=>wrap.appendChild(renderNode(c)));
+  if(!S.categories.length)wrap.appendChild(el('div','empty','<p>Kategori yok. + ile ekleyin.</p>'));
+}
+function openCatSheet(cat=null,presetParent=''){
+  const isEdit=!!cat;
+  const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
+  sheet.innerHTML=`<div class="sheet-handle"></div><h2>${isEdit?'Kategori Düzenle':'Yeni Kategori'}</h2>
+    <div id="cErr"></div>
+    <div class="fg"><label class="fl">Ad</label><input class="fi" id="cName" value="${esc(cat?.name||'')}"></div>
+    <div class="fg"><label class="fl">Üst Kategori (boş = ana)</label><select class="fs" id="cParent"><option value="">— Ana Kategori —</option>${buildCatOptions(cat?.parentId||presetParent,'',0)}</select></div>
+    <button class="btn-primary" id="saveCatBtn">${isEdit?'Güncelle':'Ekle'}</button>
+    <button class="btn-secondary" id="cancelCatBtn">Vazgeç</button>`;
+  overlay.appendChild(sheet);$('#modalRoot').appendChild(overlay);
+  sheet.querySelector('#cancelCatBtn').onclick=closeSheet;
+  sheet.querySelector('#saveCatBtn').onclick=async()=>{
+    const name=sheet.querySelector('#cName').value.trim();
+    if(!name){sheet.querySelector('#cErr').innerHTML='<div class="alert bad">Ad zorunlu.</div>';return;}
+    showLoading();try{
+      await api('adminSaveCategory',{id:cat?.id||null,name,parentId:sheet.querySelector('#cParent').value});
+      await loadAppData();closeSheet();hideLoading();renderCatTree();showToast('Kaydedildi.','good');
+    }catch(e){hideLoading();sheet.querySelector('#cErr').innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;}
+  };
+}
+
+/* ===== ADMIN: MAKİNE ===== */
+function renderMachineBalances(){
+  const wrap=$('#machineBalances');wrap.innerHTML='';
+  const bals=S.allBalances.filter(b=>Number(b.quantity)>0);
+  if(!bals.length){wrap.appendChild(el('div','empty','<p>Henüz bakiye yok.</p>'));return;}
+  const byMachine={};
+  bals.forEach(b=>{const mid=b.machineId||'__none__';if(!byMachine[mid])byMachine[mid]=[];byMachine[mid].push(b);});
+  Object.entries(byMachine).forEach(([mid,bs])=>{
+    const mac=mid==='__none__'?null:S.machines.find(m=>m.id===mid);
+    const macLabel=mac?mac.name:'Makinesiz';
+    const block=el('div','panel-block');
+    const rows=bs.map(b=>{
+      const prod=S.products.find(p=>p.id===b.productId);
+      const user=S.allUsers.find(u=>u.email===b.userEmail);
+      return `<div class="panel-row"><span>${esc(prod?prod.name:b.productId)} <span style="color:var(--text-2)">· ${esc(user?user.displayName||user.name:b.userEmail)}</span></span><span class="v">${b.quantity}</span></div>`;
+    }).join('');
+    block.innerHTML=`<div class="panel-block-title">${icon('wrench')} ${esc(macLabel)}</div>${rows}`;
+    wrap.appendChild(block);
+  });
+}
+function renderMachineList(){
+  const wrap=$('#machineList');wrap.innerHTML='';
+  if(!S.machines.length){wrap.appendChild(el('div','empty','<p>Makine yok.</p>'));return;}
+  S.machines.forEach((m,idx)=>{
+    const row=el('div','adm-row');
+    row.innerHTML=`<div class="adm-main"><div class="adm-title">${esc(m.name)}</div></div>
+      <div class="adm-acts">
+        <button class="btn-sm" data-act="up" ${idx===0?'disabled':''}>↑</button>
+        <button class="btn-sm" data-act="down" ${idx===S.machines.length-1?'disabled':''}>↓</button>
+        <button class="btn-sm" data-act="edit">Düzenle</button><button class="btn-sm bad" data-act="del">Sil</button></div>`;
+    row.querySelector('[data-act="edit"]').onclick=()=>openMachineSheet(m);
+    row.querySelector('[data-act="del"]').onclick=async()=>{
+      if(!confirm('Silmek istediğinizden emin misiniz?'))return;
+      showLoading();try{await api('adminDeleteMachine',{id:m.id});await loadAppData();hideLoading();renderMachineList();showToast('Silindi.','good');}catch(e){hideLoading();showToast(e.message,'bad');}
+    };
+    const upBtn=row.querySelector('[data-act="up"]'), downBtn=row.querySelector('[data-act="down"]');
+    if(upBtn) upBtn.onclick=async()=>{
+      const newOrder=S.machines.map(x=>x.id); const i=newOrder.indexOf(m.id);
+      if(i>0){ [newOrder[i-1],newOrder[i]]=[newOrder[i],newOrder[i-1]];
+        showLoading();try{await api('adminReorderMachines',{order:newOrder});await loadAppData();hideLoading();renderMachineList();}catch(e){hideLoading();showToast(e.message,'bad');} }
+    };
+    if(downBtn) downBtn.onclick=async()=>{
+      const newOrder=S.machines.map(x=>x.id); const i=newOrder.indexOf(m.id);
+      if(i<newOrder.length-1){ [newOrder[i],newOrder[i+1]]=[newOrder[i+1],newOrder[i]];
+        showLoading();try{await api('adminReorderMachines',{order:newOrder});await loadAppData();hideLoading();renderMachineList();}catch(e){hideLoading();showToast(e.message,'bad');} }
+    };
+    wrap.appendChild(row);
+  });
+}
+function openMachineSheet(machine=null){
+  const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
+  sheet.innerHTML=`<div class="sheet-handle"></div><h2>${machine?'Makine Düzenle':'Yeni Makine'}</h2>
+    <div id="mErr"></div><div class="fg"><label class="fl">Makine Adı</label><input class="fi" id="mName" value="${esc(machine?.name||'')}"></div>
+    <button class="btn-primary" id="saveMacBtn">${machine?'Güncelle':'Ekle'}</button>
+    <button class="btn-secondary" id="cancelMacBtn">Vazgeç</button>`;
+  overlay.appendChild(sheet);$('#modalRoot').appendChild(overlay);
+  sheet.querySelector('#cancelMacBtn').onclick=closeSheet;
+  sheet.querySelector('#saveMacBtn').onclick=async()=>{
+    const name=sheet.querySelector('#mName').value.trim();
+    if(!name){sheet.querySelector('#mErr').innerHTML='<div class="alert bad">Ad zorunlu.</div>';return;}
+    showLoading();try{await api('adminSaveMachine',{id:machine?.id||null,name});await loadAppData();closeSheet();hideLoading();renderMachineList();renderMachineBalances();showToast('Kaydedildi.','good');}catch(e){hideLoading();sheet.querySelector('#mErr').innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;}
+  };
+}
+
+/* ===== ADMIN: HURDA ===== */
+function renderScrapList(){
+  const wrap=$('#scrapList');wrap.innerHTML='';
+  if(!S.scrapLog.length){wrap.appendChild(el('div','empty',`<div class="ico">${ICONS.trash}</div><p>Hurda kaydı yok.</p>`));return;}
+  const totals={};
+  S.scrapLog.forEach(tx=>{totals[tx.userEmail]=(totals[tx.userEmail]||0)+Number(tx.quantity||0);});
+  const summary=el('div','panel-block');
+  summary.innerHTML=`<div class="panel-block-title">Kullanıcı Bazlı Toplam</div>${Object.entries(totals).map(([email,total])=>{
+    const user=S.allUsers.find(u=>u.email===email);
+    return `<div class="panel-row"><span>${esc(user?user.displayName||user.name:email)}</span><span class="v" style="color:var(--bad)">${total}</span></div>`;
+  }).join('')}`;
+  wrap.appendChild(summary);
+  wrap.appendChild(el('div','sec-title','Tüm Hurda Kayıtları'));
+  S.scrapLog.forEach(tx=>{
+    const prod=S.products.find(p=>p.id===tx.productId);
+    const user=S.allUsers.find(u=>u.email===tx.userEmail);
+    const mac=S.machines.find(m=>m.id===tx.machineId);
+    const row=el('div','tx-row');
+    row.innerHTML=`<span class="tx-type tx-hurda">hurda</span>
+      <div class="tx-detail">
+        <div class="tx-main">${esc(prod?prod.name:tx.productId)} · ${tx.quantity}</div>
+        <div class="tx-sub">${esc(user?user.displayName||user.name:tx.userEmail)}${mac?` · ${icon('wrench','ico-sm')} `+esc(mac.name):''} · ${fmtDate(tx.timestamp)}</div>
+      </div>`;
+    wrap.appendChild(row);
+  });
+}
+
+/* ===== ADMIN: HAREKETLER ===== */
+function txFilterActiveCount(){
+  const f=S.txFilter;
+  let n=0;
+  if(f.dateFrom||f.dateTo) n++;
+  if(f.productIds.length) n++;
+  if(f.userEmails.length) n++;
+  if(f.machineIds.length) n++;
+  return n;
+}
+function applyTxFilter(list){
+  const f=S.txFilter;
+  return list.filter(tx=>{
+    if(f.dateFrom && new Date(tx.timestamp) < new Date(f.dateFrom+'T00:00:00')) return false;
+    if(f.dateTo && new Date(tx.timestamp) > new Date(f.dateTo+'T23:59:59')) return false;
+    if(f.productIds.length && !f.productIds.includes(tx.productId)) return false;
+    if(f.userEmails.length && !f.userEmails.includes(tx.userEmail)) return false;
+    if(f.machineIds.length && !f.machineIds.includes(tx.machineId)) return false;
+    return true;
+  });
+}
+function renderTxLog(){
+  const wrap=$('#txLog');wrap.innerHTML='';
+  const badge=$('#txFilterBadge');
+  const count=txFilterActiveCount();
+  if(badge){ badge.classList.toggle('hidden', count===0); badge.textContent=String(count); }
+  const list=applyTxFilter(S.transactions||[]);
+  if(!list.length){wrap.appendChild(el('div','empty',`<p>${count>0?'Filtreye uyan hareket yok.':'Hareket yok.'}</p>`));return;}
+  list.forEach(tx=>{
+    const prod=S.products.find(p=>p.id===tx.productId);
+    const mac=S.machines.find(m=>m.id===tx.machineId);
+    const row=el('div','tx-row');
+    row.innerHTML=`<span class="tx-type tx-${tx.type}">${tx.type}</span>
+      <div class="tx-detail">
+        <div class="tx-main">${esc(prod?prod.name:tx.productId)} · ${tx.quantity}</div>
+        <div class="tx-sub">${esc(tx.userEmail)}${mac?` · ${icon('wrench','ico-sm')} `+esc(mac.name):''} · ${fmtDate(tx.timestamp)}</div>
+      </div>`;
+    wrap.appendChild(row);
+  });
+}
+function openTxFilterSheet(){
+  const overlay=el('div','sheet-overlay');const sheet=el('div','sheet');
+  const f=S.txFilter;
+  const uniqueUsers=[...new Set((S.transactions||[]).map(t=>t.userEmail))].sort();
+  const todayStr=()=>new Date().toISOString().slice(0,10);
+  const monthAgoStr=()=>{const d=new Date();d.setDate(1);return d.toISOString().slice(0,10);};
+  const yearAgoStr=()=>{const d=new Date();d.setMonth(0,1);return d.toISOString().slice(0,10);};
+
+  sheet.innerHTML=`<div class="sheet-handle"></div><h2>Hareketleri Filtrele</h2>
+    <div class="fg"><label class="fl">Tarih Aralığı</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="btn-sm" data-preset="today">Bugün</button>
+        <button class="btn-sm" data-preset="month">Bu Ay</button>
+        <button class="btn-sm" data-preset="year">Bu Yıl</button>
+        <button class="btn-sm" data-preset="all">Tümü</button>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input class="fi" type="date" id="fltFrom" value="${f.dateFrom||''}" style="flex:1;">
+        <input class="fi" type="date" id="fltTo" value="${f.dateTo||''}" style="flex:1;">
+      </div>
+    </div>
+    <div class="fg"><label class="fl">Ürün</label>
+      <input class="fi" id="fltProdSearch" placeholder="Ürün ara…" style="margin-bottom:6px;">
+      <div id="fltProdList" style="max-height:150px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:6px;">
+        ${S.products.map(p=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 2px;"><input type="checkbox" value="${p.id}" class="fltProdChk" ${f.productIds.includes(p.id)?'checked':''}><span>${esc(p.name)}</span></label>`).join('')}
+      </div>
+    </div>
+    <div class="fg"><label class="fl">Kullanıcı</label>
+      <div style="max-height:120px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:6px;">
+        ${uniqueUsers.map(email=>{const u=S.allUsers.find(x=>x.email===email);return `<label style="display:flex;align-items:center;gap:8px;padding:5px 2px;"><input type="checkbox" value="${esc(email)}" class="fltUserChk" ${f.userEmails.includes(email)?'checked':''}><span>${esc(u?u.displayName||u.name||email:email)}</span></label>`;}).join('')||'<div class="empty" style="padding:8px;"><p>Kayıt yok.</p></div>'}
+      </div>
+    </div>
+    <div class="fg"><label class="fl">Makine</label>
+      <div style="max-height:120px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:6px;">
+        ${S.machines.map(m=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 2px;"><input type="checkbox" value="${m.id}" class="fltMacChk" ${f.machineIds.includes(m.id)?'checked':''}><span>${esc(m.name)}</span></label>`).join('')}
+      </div>
+    </div>
+    <button class="btn-primary" id="fltApplyBtn">Uygula</button>
+    <button class="btn-secondary" id="fltClearBtn">Filtreleri Temizle</button>
+    <button class="btn-secondary" id="fltCancelBtn">Vazgeç</button>`;
+  overlay.appendChild(sheet);$('#modalRoot').appendChild(overlay);
+
+  sheet.querySelectorAll('[data-preset]').forEach(btn=>{
+    btn.onclick=()=>{
+      const p=btn.dataset.preset;
+      if(p==='today'){ sheet.querySelector('#fltFrom').value=todayStr(); sheet.querySelector('#fltTo').value=todayStr(); }
+      else if(p==='month'){ sheet.querySelector('#fltFrom').value=monthAgoStr(); sheet.querySelector('#fltTo').value=todayStr(); }
+      else if(p==='year'){ sheet.querySelector('#fltFrom').value=yearAgoStr(); sheet.querySelector('#fltTo').value=todayStr(); }
+      else { sheet.querySelector('#fltFrom').value=''; sheet.querySelector('#fltTo').value=''; }
+    };
+  });
+  sheet.querySelector('#fltProdSearch').oninput=(e)=>{
+    const q=e.target.value.trim().toLowerCase();
+    sheet.querySelectorAll('#fltProdList label').forEach(lbl=>{
+      lbl.style.display = lbl.textContent.toLowerCase().includes(q) ? 'flex' : 'none';
+    });
+  };
+  sheet.querySelector('#fltCancelBtn').onclick=closeSheet;
+  sheet.querySelector('#fltClearBtn').onclick=()=>{
+    S.txFilter={dateFrom:null, dateTo:null, productIds:[], userEmails:[], machineIds:[]};
+    closeSheet(); renderTxLog();
+  };
+  sheet.querySelector('#fltApplyBtn').onclick=()=>{
+    S.txFilter={
+      dateFrom: sheet.querySelector('#fltFrom').value||null,
+      dateTo: sheet.querySelector('#fltTo').value||null,
+      productIds:[...sheet.querySelectorAll('.fltProdChk:checked')].map(c=>c.value),
+      userEmails:[...sheet.querySelectorAll('.fltUserChk:checked')].map(c=>c.value),
+      machineIds:[...sheet.querySelectorAll('.fltMacChk:checked')].map(c=>c.value)
+    };
+    closeSheet(); renderTxLog();
+  };
+}
+$('#txFilterBtn').onclick=openTxFilterSheet;
+
+/* ===== ADMIN: AYARLAR ===== */
+function renderSettings(){
+  const wrap=$('#settingsContent');wrap.innerHTML='';
+  const labels=S.labels||{};
+  const block=el('div','panel-block');
+  block.innerHTML=`<div class="panel-block-title">Uygulama İsimlendirmesi</div>
+    <div class="fg"><label class="fl">Uygulama Başlığı</label><input class="fi" id="stAppTitle" value="${esc(labels.appTitle||'Takım & Elmas STOK')}" placeholder="Takım & Elmas STOK"></div>
+    <div class="fg"><label class="fl">"Makineler" Sekmesi Adı</label><input class="fi" id="stMachineTab" value="${esc(labels.machineTab||'Makineler')}" placeholder="Makineler, Katlar, Bölümler…"></div>
+    <div class="fg"><label class="fl">"Makine Listesi" Başlık Kelimesi</label><input class="fi" id="stMachineTitle" value="${esc(labels.machineTitle||'Makine')}" placeholder="Makine, Kat, Bölüm…"></div>
+    <div class="fg"><label class="fl">Makine Durum Şeridinde Ön Ek</label><input class="fi" id="stMachineChip" value="${esc(labels.machineChip||'')}" placeholder="M, Kat, Bölüm… (boş=sadece isim)"></div>
+    <button class="btn-primary" id="stSave">Kaydet</button>`;
+  wrap.appendChild(block);
+  block.querySelector('#stSave').onclick=async()=>{
+    const newLabels={
+      appTitle:block.querySelector('#stAppTitle').value.trim()||'Takım & Elmas STOK',
+      machineTab:block.querySelector('#stMachineTab').value.trim()||'Makineler',
+      machineTitle:block.querySelector('#stMachineTitle').value.trim()||'Makine',
+      machineChip:block.querySelector('#stMachineChip').value.trim()
+    };
+    showLoading('Kaydediliyor…');
+    try{
+      await api('adminSaveSetting',{key:'labels',value:JSON.stringify(newLabels)});
+      S.labels=newLabels;applyLabels();hideLoading();showToast('Ayarlar kaydedildi.','good');
+    }catch(e){hideLoading();showToast(e.message,'bad');}
+  };
+}
+
+/* ===== NOTIF ===== */
+$('#notifBtn').onclick=()=>{
+  $$('.tab').forEach(x=>x.classList.remove('active'));
+  const t=$('.tab[data-tab="a-talepler"]');
+  if(t){t.classList.add('active');renderView('a-talepler');}
+};
+
+/* ===== LOGOUT ===== */
+$('#logoutBtn').onclick=()=>{
+  try{ fbAuth.signOut(); }catch(e){}
+  __authReadyPromise=null; __authInitialState=Promise.resolve(null);
+  S.user=null;S.perms=[];
+  try{localStorage.removeItem('depo_quick_id');localStorage.removeItem('depo_quick_pin');}catch(e){}
+  $$('.admin-only').forEach(t=>t.classList.add('hidden'));
+  $$('.perm-tab').forEach(t=>t.classList.add('hidden'));
+  $('#notifBtn').classList.add('hidden');
+  $('#mainApp').classList.add('hidden');$('#loginView').classList.remove('hidden');$('#loginStatus').textContent='';
+};
+
+/* ===== INIT ===== */
+window.addEventListener('load',async()=>{
+  if(screen.orientation?.lock)screen.orientation.lock('portrait').catch(()=>{});
+  await tryQuickAutoLogin();
+});
+</script>
+</body>
+</html>

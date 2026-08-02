@@ -901,15 +901,23 @@ function openQuickLoginSheet(){
     const quickPin=sheet.querySelector('#qlPin').value.trim();
     if(!quickId||!quickPin){sheet.querySelector('#qlErr').innerHTML='<div class="alert bad">ID ve PIN zorunlu.</div>';return;}
     const btn=sheet.querySelector('#qlBtn'); btn.disabled=true; btn.textContent='Kontrol ediliyor…';
+    let d;
     try{
-      const d=await api('quickLogin',{quickId,quickPin,email:'__quick__'});
-      S.user=d.user; S.perms=d.perms||[];
-      try{localStorage.setItem('depo_quick_id',quickId); localStorage.setItem('depo_quick_pin',quickPin);}catch(e){}
-      closeSheet(); showLoading('Veriler yükleniyor…');
-      await loadAppData(); hideLoading(); enterApp();
+      d=await api('quickLogin',{quickId,quickPin,email:'__quick__'});
     }catch(err){
       sheet.querySelector('#qlErr').innerHTML=`<div class="alert bad">${esc(err.message)}</div>`;
       btn.disabled=false; btn.textContent='Giriş Yap';
+      return;
+    }
+    S.user=d.user; S.perms=d.perms||[];
+    try{localStorage.setItem('depo_quick_id',quickId); localStorage.setItem('depo_quick_pin',quickPin);}catch(e){}
+    closeSheet(); showLoading('Veriler yükleniyor…');
+    try{
+      await loadAppData(); hideLoading(); enterApp();
+    }catch(loadErr){
+      hideLoading();
+      S.user=null; S.perms=[];
+      $('#loginStatus').innerHTML=`<div class="alert bad">Veri yüklenirken hata oluştu: ${esc(loadErr.message)}</div>`;
     }
   };
   sheet.querySelector('#qlBtn').onclick=doLogin;
@@ -953,6 +961,8 @@ async function tryQuickAutoLogin(){
     showLoading('Veriler yükleniyor…');
     await loadAppData(); hideLoading(); enterApp(); return true;
   }catch(err){
+    hideLoading();
+    S.user=null; S.perms=[];
     try{localStorage.removeItem('depo_quick_id');localStorage.removeItem('depo_quick_pin');}catch(e){}
     return false;
   }

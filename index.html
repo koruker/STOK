@@ -547,6 +547,11 @@ function computePerms(user, groups){
 }
 
 /* ===== API (Firebase RTDB tabanlı) ===== */
+const WORKER_ROUTED_ACTIONS = new Set([
+  'stockAction','createOrder','requestAccess','requestPinReset',
+  'adminHandlePendingScrap','adminHandleRequest','adminHandleOrder',
+  'adminAdjustBalance','adminScrapFromBalance','adminResolvePinReset'
+]);
 async function api(action, payload={}){
   try{
     if(action==='quickLogin'){
@@ -560,6 +565,21 @@ async function api(action, payload={}){
       await fbAuth.signInWithCustomToken(data.customToken);
       return {user:data.user, perms:data.perms||[]};
     }
+    if(WORKER_ROUTED_ACTIONS.has(action)){
+      // Stok hareketleri, talep onayları, bakiye düzenleme vb. artık sunucuda
+      // (yetki + iş mantığı kontrolüyle) yapılıyor — istemci veritabanına
+      // doğrudan yazamaz (Firebase Rules bunu zaten engelliyor).
+      await ensureFirebaseAuth();
+      if(!fbAuth.currentUser) throw new Error('Oturum bulunamadı, tekrar giriş yapın.');
+      const idToken=await fbAuth.currentUser.getIdToken();
+      const res=await fetch(AUTH_WORKER_URL+'/action',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({idToken, action, payload})
+      });
+      let data; try{ data=await res.json(); }catch(e){ throw new Error('Sunucu yanıtı okunamadı.'); }
+      if(!res.ok) throw new Error(data.error||'İşlem başarısız.');
+      return data;
+    }
     await ensureFirebaseAuth();
     switch(action){
 
@@ -571,18 +591,6 @@ async function api(action, payload={}){
         const groups=objToList(await dbGet('groups'));
         const user={email:payload.email, ...u};
         return {user, perms: user.role==='admin'?[]:computePerms(user,groups)};
-      }
-
-      case 'requestPinReset': {
-        if(!payload.quickId) throw new Error('Kullanıcı ID zorunlu.');
-        const id=newId('pinreq');
-        await dbSet('pinResetRequests/'+id,{timestamp:new Date().toISOString(), quickId:payload.quickId, status:'pending'});
-        return {ok:true};
-      }
-
-      case 'adminResolvePinReset': {
-        await dbUpdate('/',{['pinResetRequests/'+payload.requestId+'/status']:'resolved'});
-        return {ok:true};
       }
 
       case 'getAppData': {
@@ -641,111 +649,6 @@ async function api(action, payload={}){
         return data;
       }
 
-      case 'createOrder': {
-        const id=newId('ord');
-        await dbSet('orderRequests/'+id,{timestamp:new Date().toISOString(),userEmail:S.user.email,productId:payload.productId,quantity:Number(payload.quantity)||1,note:payload.note||'',status:'pending'});
-        return {ok:true};
-      }
-
-      case 'requestAccess': {
-        const id=newId('req');
-        await dbSet('pendingRequests/'+id,{timestamp:new Date().toISOString(),userEmail:S.user.email,productId:payload.productId,quantity:Number(payload.quantity)||1,machineId:payload.machineId||'_none_',status:'pending'});
-        return {ok:true};
-      }
-
-      case 'stockAction': {
-        const productId=payload.productId, type=payload.type, qty=Number(payload.quantity)||0, machineId=payload.machineId||'_none_';
-        if(qty<=0) throw new Error('Geçersiz adet.');
-        const userKey=encodeEmailKey(S.user.email);
-        const product=await dbGet('products/'+productId);
-        if(!product) throw new Error('Ürün bulunamadı.');
-        const balPath='balances/'+userKey+'/'+productId+'/'+machineId;
-        const curBal=Number(await dbGet(balPath))||0;
-        const updates={};
-        if(type==='cekim'){
-          const authorized=String(product.authorizedUsers||'').split(',').map(s=>s.trim()).filter(Boolean);
-          const hasAuth=authorized.length===0||authorized.includes(S.user.email)||S.user.role==='admin';
-          if(!hasAuth) throw new Error('Bu ürünü çekmek için yetkiniz yok. Önce yetki talebi gönderin.');
-          if(Number(product.stock)<qty) throw new Error('Yetersiz stok.');
-          updates['products/'+productId+'/stock']=Number(product.stock)-qty;
-          updates[balPath]=curBal+qty;
-          // Aynı ürün+makinede zaten bakiyesi varsa: eskisi otomatik hurda bildirimi olarak admin onayına düşer
-          if(curBal>0){
-            const scrapId=newId('scrap');
-            updates['pendingScrap/'+scrapId]={
-              timestamp:new Date().toISOString(),
-              triggerEmail:S.user.email,
-              machineId,
-              productId,
-              oldUserEmail:S.user.email,
-              oldQuantity:curBal,
-              status:'pending'
-            };
-          }
-        } else if(type==='iade'){
-          if(curBal<qty) throw new Error('Üzerinizde bu kadar stok yok.');
-          updates['products/'+productId+'/stock']=Number(product.stock)+qty;
-          updates[balPath]=curBal-qty;
-        } else if(type==='hurda'){
-          if(curBal<qty) throw new Error('Üzerinizde bu kadar stok yok.');
-          updates[balPath]=curBal-qty;
-        } else {
-          throw new Error('Bilinmeyen işlem tipi.');
-        }
-        const txId=newId('tx');
-        updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:S.user.email,productId,type,quantity:qty,machineId};
-        await dbUpdate('/',updates);
-        return {ok:true};
-      }
-
-      case 'adminHandlePendingScrap': {
-        const s=await dbGet('pendingScrap/'+payload.scrapId);
-        if(!s) throw new Error('Kayıt bulunamadı.');
-        const updates={};
-        updates['pendingScrap/'+payload.scrapId+'/status']=payload.approved?'approved':'rejected';
-        if(payload.approved){
-          const uKey=encodeEmailKey(s.oldUserEmail);
-          const balPath='balances/'+uKey+'/'+s.productId+'/'+(s.machineId||'_none_');
-          const curBal=Number(await dbGet(balPath))||0;
-          updates[balPath]=Math.max(0,curBal-Number(s.oldQuantity||0));
-          const txId=newId('tx');
-          updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:s.oldUserEmail,productId:s.productId,type:'hurda',quantity:Number(s.oldQuantity||0),machineId:s.machineId||'_none_'};
-        }
-        await dbUpdate('/',updates);
-        return {ok:true};
-      }
-
-      case 'adminHandleRequest': {
-        const r=await dbGet('pendingRequests/'+payload.requestId);
-        if(!r) throw new Error('Kayıt bulunamadı.');
-        const updates={};
-        updates['pendingRequests/'+payload.requestId+'/status']=payload.approved?'approved':'rejected';
-        if(payload.approved){
-          const product=await dbGet('products/'+r.productId);
-          if(!product) throw new Error('Ürün bulunamadı.');
-          const qty=Number(r.quantity)||0;
-          if(Number(product.stock)<qty) throw new Error('Yetersiz stok.');
-          const uKey=encodeEmailKey(r.userEmail);
-          const balPath='balances/'+uKey+'/'+r.productId+'/'+(r.machineId||'_none_');
-          const curBal=Number(await dbGet(balPath))||0;
-          updates['products/'+r.productId+'/stock']=Number(product.stock)-qty;
-          updates[balPath]=curBal+qty;
-          const txId=newId('tx');
-          updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:r.userEmail,productId:r.productId,type:'cekim',quantity:qty,machineId:r.machineId||'_none_'};
-        }
-        await dbUpdate('/',updates);
-        return {ok:true};
-      }
-
-      case 'adminHandleOrder': {
-        const updates={};
-        updates['orderRequests/'+payload.orderId+'/status']=payload.approved?'fulfilled':'rejected';
-        updates['orderRequests/'+payload.orderId+'/adminNote']=payload.note||'';
-        updates['orderRequests/'+payload.orderId+'/resolvedAt']=new Date().toISOString();
-        await dbUpdate('/',updates);
-        return {ok:true};
-      }
-
       case 'adminSaveUser': {
         if(!payload.targetEmail) throw new Error('Email zorunlu.');
         const key=encodeEmailKey(payload.targetEmail);
@@ -765,26 +668,6 @@ async function api(action, payload={}){
 
       case 'adminDeleteUser': {
         await dbRemove('users/'+encodeEmailKey(payload.targetEmail));
-        return {ok:true};
-      }
-
-      case 'adminAdjustBalance': {
-        const uKey=encodeEmailKey(payload.targetEmail);
-        await dbSet('balances/'+uKey+'/'+payload.productId+'/'+(payload.machineId||'_none_'),Number(payload.newQuantity)||0);
-        return {ok:true};
-      }
-
-      case 'adminScrapFromBalance': {
-        const uKey=encodeEmailKey(payload.targetEmail);
-        const balPath='balances/'+uKey+'/'+payload.productId+'/'+(payload.machineId||'_none_');
-        const curBal=Number(await dbGet(balPath))||0;
-        const qty=Number(payload.quantity)||0;
-        if(curBal<qty) throw new Error('Bakiye yetersiz.');
-        const updates={};
-        updates[balPath]=curBal-qty;
-        const txId=newId('tx');
-        updates['transactions/'+txId]={timestamp:new Date().toISOString(),userEmail:payload.targetEmail,productId:payload.productId,type:'hurda',quantity:qty,machineId:payload.machineId||'_none_'};
-        await dbUpdate('/',updates);
         return {ok:true};
       }
 
